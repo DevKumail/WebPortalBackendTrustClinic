@@ -1,0 +1,61 @@
+﻿========================================
+Coherent Web Portal - Security Keys
+Generated: 2025-12-03 18:39:24
+========================================
+
+IMPORTANT: Keep these keys SECURE!
+- Never commit to source control
+- Store in secure key management (Azure Key Vault, etc.)
+- Use different keys for Dev/Staging/Production
+
+========================================
+JWT SECRET (64 bytes, base64 encoded):
+========================================
+nkgTBXe0MLda5fDZ6p+ZxKPPDR9A6IF72/aY97KC6xlhVHANJmpCq5uvJPLwDVcruqYkRCNDsyUxziuDtDiCVA==
+
+========================================
+ENCRYPTION KEY (32 bytes, base64 encoded):
+========================================
+E+vaWvSWSQw2zovKlLVV9/KRKx/BnFjbzxohRc92Iyg=
+
+========================================
+ENCRYPTION IV (16 bytes, base64 encoded):
+========================================
+VXkcVUqZzUnhUsL0Q/Cllw==
+
+========================================
+APPSETTINGS.JSON CONFIGURATION:
+========================================
+{
+  "Jwt": {
+    "Secret": "nkgTBXe0MLda5fDZ6p+ZxKPPDR9A6IF72/aY97KC6xlhVHANJmpCq5uvJPLwDVcruqYkRCNDsyUxziuDtDiCVA==",
+    "Issuer": "https://coherent-web-portal.local",
+    "Audience": "https://coherent-web-portal.local",
+    "AccessTokenExpiryMinutes": "60",
+    "RefreshTokenExpiryDays": "7"
+  },
+  "Encryption": {
+    "Key": "E+vaWvSWSQw2zovKlLVV9/KRKx/BnFjbzxohRc92Iyg=",
+    "IV": "VXkcVUqZzUnhUsL0Q/Cllw=="
+  }
+}
+
+========================================
+HOW TO USE:
+========================================
+1. Open Coherent Web Portal\appsettings.json
+2. Replace the values in Jwt and Encryption sections
+3. Save the file
+4. Build and run the application
+
+========================================
+SECURITY NOTES:
+========================================
+- JWT Secret: Used to sign and verify JWT tokens
+- Encryption Key: Used for AES-256 encryption of sensitive data
+- Encryption IV: Initialization vector for AES encryption
+
+- All keys are cryptographically random
+- Keys are base64 encoded for easy storage
+- Change keys annually or after security incident
+

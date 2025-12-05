@@ -1,0 +1,16 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/Coherent Web Portal/.vs
+/Coherent Web Portal/Coherent Web Portal/bin/Debug/net8.0
+/Coherent Web Portal/Coherent Web Portal/logs
+/Coherent Web Portal/Coherent Web Portal/obj
+/Coherent Web Portal/Coherent.Application/bin/Debug/net8.0
+/Coherent Web Portal/Coherent.Application/obj
+/Coherent Web Portal/Coherent.Core/bin/Debug/net8.0
+/Coherent Web Portal/Coherent.Core/obj
+/Coherent Web Portal/Coherent.Domain/bin/Debug/net8.0
+/Coherent Web Portal/Coherent.Domain/obj
+/Coherent Web Portal/Coherent.Infrastructure/bin/Debug/net8.0
+/Coherent Web Portal/Coherent.Infrastructure/obj
