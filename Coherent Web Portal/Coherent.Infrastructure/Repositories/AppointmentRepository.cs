@@ -42,12 +42,9 @@ public class AppointmentRepository : IAppointmentRepository
                     WHEN 2 THEN 'Rescheduled'
                     WHEN 3 THEN 'Cancelled'
                     ELSE 'Unknown'
-                END AS Status,
-                sa.Reason,
-                sa.Notes,
-                sa.CreatedDate
-            FROM SchAppointments sa
-            LEFT JOIN HREmployees he ON sa.ProviderId = he.EmpId
+                END AS Status
+            FROM SchAppointment sa
+            LEFT JOIN HREmployee he ON sa.ProviderId = he.EmpId
             WHERE sa.MRNo = @MRNo 
             AND sa.IsActive = 1
             ORDER BY sa.AppDateTime DESC";
@@ -76,31 +73,39 @@ public class AppointmentRepository : IAppointmentRepository
 
     public async Task<long> BookAppointmentAsync(BookAppointmentRequest request)
     {
-        var query = @"
-            INSERT INTO SchAppointments 
-            (MRNo, ProviderId, SiteId, AppDate, AppDateTime, Duration, AppStatusId, IsActive, Reason, Notes, CreatedDate, CreatedBy)
-            VALUES 
-            (@MRNo, @ProviderId, @SiteId, @AppDate, @AppDateTime, @Duration, 1, 1, @Reason, @Notes, @CreatedDate, 'System');
-            
-            SELECT CAST(SCOPE_IDENTITY() AS BIGINT);";
-
-        var appDate = DateStringConversion.DateToShortString(request.AppointmentDateTime);
-        var appDateTime = DateStringConversion.DateToString(request.AppointmentDateTime);
-
-        var parameters = new
+        try
         {
-            MRNo = request.MRNO,
-            ProviderId = request.DoctorId,
-            SiteId = 1, // Default site, should be passed in request
-            AppDate = appDate,
-            AppDateTime = appDateTime,
-            Duration = 15, // Default 15 minutes
-            Reason = request.Reason,
-            Notes = request.Notes,
-            CreatedDate = DateStringConversion.DateToString(DateTime.Now)
-        };
+            var query = @"
+                INSERT INTO SchAppointment 
+                (MRNo, ProviderId, SiteId, AppDate, AppDateTime, Duration, AppStatusId, IsActive, Reason, Notes, CreatedDate, CreatedBy)
+                VALUES 
+                (@MRNo, @ProviderId, @SiteId, @AppDate, @AppDateTime, @Duration, 1, 1, @Reason, @Notes, @CreatedDate, 'System');
+                
+                SELECT CAST(SCOPE_IDENTITY() AS BIGINT);";
 
-        return await _primaryConnection.ExecuteScalarAsync<long>(query, parameters);
+            var appDate = DateStringConversion.DateToShortString(request.AppointmentDateTime);
+            var appDateTime = DateStringConversion.DateToString(request.AppointmentDateTime);
+
+            var parameters = new
+            {
+                MRNo = request.MRNO,
+                ProviderId = request.DoctorId,
+                SiteId = 1, // Default site, should be passed in request
+                AppDate = appDate,
+                AppDateTime = appDateTime,
+                Duration = 15, // Default 15 minutes
+                Reason = request.Reason,
+                Notes = request.Notes,
+                CreatedDate = DateStringConversion.DateToString(DateTime.Now)
+            };
+
+            return await _primaryConnection.ExecuteScalarAsync<long>(query, parameters);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] BookAppointmentAsync failed: {ex.Message}");
+            throw;
+        }
     }
 
     #endregion
@@ -109,62 +114,70 @@ public class AppointmentRepository : IAppointmentRepository
 
     public async Task<bool> ModifyAppointmentAsync(ModifyAppointmentRequest request)
     {
-        string query;
-        object parameters;
-
-        if (request.Status?.ToLower() == "cancel" || request.Status?.ToLower() == "cancelled")
+        try
         {
-            // Cancel appointment
-            query = @"
-                UPDATE SchAppointments 
-                SET AppStatusId = 3, 
-                    IsActive = 0,
-                    Reason = @Reason,
-                    UpdatedDate = @UpdatedDate,
-                    UpdatedBy = 'System'
-                WHERE AppId = @AppId";
+            string query;
+            object parameters;
 
-            parameters = new
+            if (request.Status?.ToLower() == "cancel" || request.Status?.ToLower() == "cancelled")
             {
-                AppId = request.AppId,
-                Reason = request.Reason ?? "Cancelled by patient",
-                UpdatedDate = DateStringConversion.DateToString(DateTime.Now)
-            };
-        }
-        else if (request.Status?.ToLower() == "rescheduled" && request.AppointmentDateTime.HasValue)
-        {
-            // Reschedule appointment
-            var appDate = DateStringConversion.DateToShortString(request.AppointmentDateTime.Value);
-            var appDateTime = DateStringConversion.DateToString(request.AppointmentDateTime.Value);
+                // Cancel appointment
+                query = @"
+                    UPDATE SchAppointment 
+                    SET AppStatusId = 3, 
+                        IsActive = 0,
+                        Reason = @Reason,
+                        UpdatedDate = @UpdatedDate,
+                        UpdatedBy = 'System'
+                    WHERE AppId = @AppId";
 
-            query = @"
-                UPDATE SchAppointments 
-                SET AppStatusId = 2,
-                    AppDate = @AppDate,
-                    AppDateTime = @AppDateTime,
-                    Reason = @Reason,
-                    Notes = @Notes,
-                    UpdatedDate = @UpdatedDate,
-                    UpdatedBy = 'System'
-                WHERE AppId = @AppId";
-
-            parameters = new
+                parameters = new
+                {
+                    AppId = request.AppId,
+                    Reason = request.Reason ?? "Cancelled by patient",
+                    UpdatedDate = DateStringConversion.DateToString(DateTime.Now)
+                };
+            }
+            else if (request.Status?.ToLower() == "rescheduled" && request.AppointmentDateTime.HasValue)
             {
-                AppId = request.AppId,
-                AppDate = appDate,
-                AppDateTime = appDateTime,
-                Reason = request.Reason ?? "Rescheduled",
-                Notes = request.Notes,
-                UpdatedDate = DateStringConversion.DateToString(DateTime.Now)
-            };
-        }
-        else
-        {
-            return false;
-        }
+                // Reschedule appointment
+                var appDate = DateStringConversion.DateToShortString(request.AppointmentDateTime.Value);
+                var appDateTime = DateStringConversion.DateToString(request.AppointmentDateTime.Value);
 
-        var rowsAffected = await _primaryConnection.ExecuteAsync(query, parameters);
-        return rowsAffected > 0;
+                query = @"
+                    UPDATE SchAppointment 
+                    SET AppStatusId = 2,
+                        AppDate = @AppDate,
+                        AppDateTime = @AppDateTime,
+                        Reason = @Reason,
+                        Notes = @Notes,
+                        UpdatedDate = @UpdatedDate,
+                        UpdatedBy = 'System'
+                    WHERE AppId = @AppId";
+
+                parameters = new
+                {
+                    AppId = request.AppId,
+                    AppDate = appDate,
+                    AppDateTime = appDateTime,
+                    Reason = request.Reason ?? "Rescheduled",
+                    Notes = request.Notes,
+                    UpdatedDate = DateStringConversion.DateToString(DateTime.Now)
+                };
+            }
+            else
+            {
+                return false;
+            }
+
+            var rowsAffected = await _primaryConnection.ExecuteAsync(query, parameters);
+            return rowsAffected > 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] ModifyAppointmentAsync failed: {ex.Message}");
+            throw;
+        }
     }
 
     #endregion
@@ -173,8 +186,16 @@ public class AppointmentRepository : IAppointmentRepository
 
     public async Task<SchAppointment?> GetAppointmentByIdAsync(long appId)
     {
-        var query = "SELECT * FROM SchAppointments WHERE AppId = @AppId";
-        return await _primaryConnection.QueryFirstOrDefaultAsync<SchAppointment>(query, new { AppId = appId });
+        try
+        {
+            var query = "SELECT * FROM SchAppointment WHERE AppId = @AppId";
+            return await _primaryConnection.QueryFirstOrDefaultAsync<SchAppointment>(query, new { AppId = appId });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GetAppointmentByIdAsync failed: {ex.Message}");
+            throw;
+        }
     }
 
     #endregion
@@ -186,16 +207,34 @@ public class AppointmentRepository : IAppointmentRepository
         var slots = new List<DoctorSlotsDto>();
         long slotId = 1000000; // Starting slot ID
 
-        // Get provider info
+        Console.WriteLine($"[DEBUG] Request - DoctorId: {request.DoctorId}, Alias: {request.PrsnlAlias}, From: {request.FromDate}, To: {request.ToDate}");
+
+        // Get provider info - Try with more flexible criteria
+        var providerQuery = @"
+            SELECT TOP 1 * FROM HREmployee 
+            WHERE (
+                (@Alias IS NOT NULL AND ProvNPI = @Alias) OR 
+                (@DoctorId IS NOT NULL AND EmpId = @DoctorId)
+            ) 
+            AND Active = 1";
+        
+        Console.WriteLine($"[DEBUG] Searching provider with DoctorId={request.DoctorId}, Alias={request.PrsnlAlias}");
+        
         var provider = await _primaryConnection.QueryFirstOrDefaultAsync<HREmployee>(
-            "SELECT * FROM HREmployees WHERE (ProvNPI = @Alias OR EmpId = @DoctorId) AND EmpType = 1 AND Active = 1",
+            providerQuery,
             new { Alias = request.PrsnlAlias, DoctorId = request.DoctorId });
 
         if (provider == null)
+        {
+            Console.WriteLine($"[DEBUG] Provider not found! Check HREmployee table.");
             return slots;
+        }
+
+        Console.WriteLine($"[DEBUG] Provider found - EmpId: {provider.EmpId}, Name: {provider.FName} {provider.LName}");
 
         // Get provider schedules
         var schedules = await GetProviderSchedulesAsync(provider.EmpId, request.FromDate, request.ToDate);
+        Console.WriteLine($"[DEBUG] Found {schedules.Count} schedules");
 
         DateTime currentDate = request.FromDate;
 
@@ -211,12 +250,21 @@ public class AppointmentRepository : IAppointmentRepository
             string shortDate = DateStringConversion.DateToShortString(currentDate);
             string monthDay = currentDate.ToString("MMdd");
 
+            Console.WriteLine($"[DEBUG] Processing date: {currentDate:yyyy-MM-dd} ({currentDate.DayOfWeek})");
+
             // Filter schedules valid for current date
             var validSchedules = schedules.Where(ps =>
-                (string.IsNullOrEmpty(ps.StartDate) || DateStringConversion.StringToDate(ps.StartDate).Date <= currentDate.Date) &&
-                (string.IsNullOrEmpty(ps.EndDate) || DateStringConversion.StringToDate(ps.EndDate).Date >= currentDate.Date) &&
-                DateStringConversion.DayExists(currentDate.DayOfWeek.ToString(), ps.Days)
-            ).OrderBy(ps => ps.Priority).ToList();
+            {
+                var startDateValid = string.IsNullOrEmpty(ps.StartDate) || DateStringConversion.StringToDate(ps.StartDate).Date <= currentDate.Date;
+                var endDateValid = string.IsNullOrEmpty(ps.EndDate) || DateStringConversion.StringToDate(ps.EndDate).Date >= currentDate.Date;
+                var dayValid = DateStringConversion.DayExists(currentDate.DayOfWeek.ToString(), ps.Days);
+                
+                Console.WriteLine($"[DEBUG] Schedule {ps.PSId}: StartDate={ps.StartDate} (valid:{startDateValid}), EndDate={ps.EndDate} (valid:{endDateValid}), Days={ps.Days} (valid:{dayValid})");
+                
+                return startDateValid && endDateValid && dayValid;
+            }).OrderBy(ps => ps.Priority).ToList();
+
+            Console.WriteLine($"[DEBUG] Valid schedules for {currentDate:yyyy-MM-dd}: {validSchedules.Count}");
 
             foreach (var schedule in validSchedules)
             {
@@ -404,60 +452,93 @@ public class AppointmentRepository : IAppointmentRepository
 
     public async Task<List<ProviderSchedule>> GetProviderSchedulesAsync(long providerId, DateTime fromDate, DateTime toDate)
     {
-        var query = @"
-            SELECT * FROM ProviderSchedules
-            WHERE Active = 1 
-            AND ProviderId = @ProviderId
-            AND Days > 0
-            ORDER BY Priority";
+        try
+        {
+            var query = @"
+                SELECT * FROM ProviderSchedule
+                WHERE Active = 1 
+                AND ProviderId = @ProviderId
+                AND Days > 0
+                ORDER BY Priority";
 
-        var schedules = await _primaryConnection.QueryAsync<ProviderSchedule>(query, new { ProviderId = providerId });
-        return schedules.ToList();
+            var schedules = await _primaryConnection.QueryAsync<ProviderSchedule>(query, new { ProviderId = providerId });
+            return schedules.ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GetProviderSchedulesAsync failed: {ex.Message}");
+            return new List<ProviderSchedule>();
+        }
     }
 
     public async Task<List<HolidaySchedule>> GetHolidaysAsync(int year, string monthDay, long? siteId)
     {
-        var query = @"
-            SELECT * FROM HolidaySchedules
-            WHERE Years = @Year 
-            AND MonthDay = @MonthDay
-            AND IsActive = 1
-            AND (SiteID = @SiteId OR SiteID = -1)";
+        try
+        {
+            var query = @"
+                SELECT * FROM HolidaySchedule
+                WHERE Years = @Year 
+                AND MonthDay = @MonthDay
+                AND IsActive = 1
+                AND (SiteID = @SiteId OR SiteID = -1)";
 
-        var holidays = await _primaryConnection.QueryAsync<HolidaySchedule>(query, 
-            new { Year = year.ToString(), MonthDay = monthDay, SiteId = siteId });
-        
-        return holidays.ToList();
+            var holidays = await _primaryConnection.QueryAsync<HolidaySchedule>(query, 
+                new { Year = year.ToString(), MonthDay = monthDay, SiteId = siteId });
+            
+            return holidays.ToList();
+        }
+        catch (Exception)
+        {
+            // HolidaySchedules table doesn't exist or query failed, return empty list
+            Console.WriteLine("[DEBUG] HolidaySchedules table not found or query failed - skipping holiday check");
+            return new List<HolidaySchedule>();
+        }
     }
 
     public async Task<List<SchBlockTimeslot>> GetBlockedTimeslotsAsync(long providerId, string date, long? siteId)
     {
-        var query = @"
-            SELECT * FROM SchBlockTimeslots
-            WHERE ProviderId = @ProviderId
-            AND EffectiveDateTime LIKE @Date + '%'
-            AND (SiteId IS NULL OR SiteId = @SiteId)";
+        try
+        {
+            var query = @"
+                SELECT * FROM SchBlockTimeslots
+                WHERE ProviderId = @ProviderId
+                AND EffectiveDateTime LIKE @Date + '%'
+                AND (SiteId IS NULL OR SiteId = @SiteId)";
 
-        var blocked = await _primaryConnection.QueryAsync<SchBlockTimeslot>(query,
-            new { ProviderId = providerId, Date = date, SiteId = siteId });
-        
-        return blocked.ToList();
+            var blocked = await _primaryConnection.QueryAsync<SchBlockTimeslot>(query,
+                new { ProviderId = providerId, Date = date, SiteId = siteId });
+            
+            return blocked.ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GetBlockedTimeslotsAsync failed: {ex.Message}");
+            return new List<SchBlockTimeslot>();
+        }
     }
 
     public async Task<List<SchAppointment>> GetExistingAppointmentsAsync(long providerId, string date, long siteId)
     {
-        var query = @"
-            SELECT * FROM SchAppointments
-            WHERE ProviderId = @ProviderId
-            AND AppDate = @Date
-            AND SiteId = @SiteId
-            AND IsActive = 1
-            AND AppStatusId = 1";
+        try
+        {
+            var query = @"
+                SELECT * FROM SchAppointment
+                WHERE ProviderId = @ProviderId
+                AND AppDate = @Date
+                AND SiteId = @SiteId
+                AND IsActive = 1
+                AND AppStatusId = 1";
 
-        var appointments = await _primaryConnection.QueryAsync<SchAppointment>(query,
-            new { ProviderId = providerId, Date = date, SiteId = siteId });
-        
-        return appointments.ToList();
+            var appointments = await _primaryConnection.QueryAsync<SchAppointment>(query,
+                new { ProviderId = providerId, Date = date, SiteId = siteId });
+            
+            return appointments.ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GetExistingAppointmentsAsync failed: {ex.Message}");
+            return new List<SchAppointment>();
+        }
     }
 
     #endregion
