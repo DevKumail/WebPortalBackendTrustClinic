@@ -55,8 +55,7 @@ public class AppointmentsController : ControllerBase
     /// </summary>
     [HttpGet("GetAvailableSlotOfDoctor")]
     [ProducesResponseType(typeof(List<DoctorSlotsDto>), 200)]
-    public async Task<IActionResult> GetAvailableSlotOfDoctor(
-        [FromQuery] long? doctorId,
+    public async Task<IActionResult> GetAvailableSlotOfDoctor(    
         [FromQuery] string? prsnlAlias,
         [FromQuery] DateTime? fromDate,
         [FromQuery] DateTime? toDate)
@@ -65,17 +64,17 @@ public class AppointmentsController : ControllerBase
         {
             _logger.LogInformation(
                 "Getting available slots - DoctorId: {DoctorId}, Alias: {Alias}, From: {From}, To: {To}",
-                doctorId, prsnlAlias, fromDate, toDate);
+                 prsnlAlias, fromDate, toDate);
 
             var request = new GetAvailableSlotsRequest
             {
-                DoctorId = doctorId,
+               
                 PrsnlAlias = prsnlAlias,
                 FromDate = fromDate ?? DateTime.Today,
                 ToDate = toDate ?? DateTime.Today.AddDays(7)
             };
 
-            if (!request.DoctorId.HasValue && string.IsNullOrWhiteSpace(request.PrsnlAlias))
+            if (string.IsNullOrWhiteSpace(request.PrsnlAlias))
             {
                 return BadRequest(new { message = "Either DoctorId or PrsnlAlias is required" });
             }

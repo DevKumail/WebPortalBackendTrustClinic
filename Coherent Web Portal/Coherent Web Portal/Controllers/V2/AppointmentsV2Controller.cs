@@ -66,7 +66,7 @@ public class AppointmentsController : ControllerBase
     [HttpGet("GetAvailableSlotOfDoctor")]
     [ProducesResponseType(typeof(List<DoctorSlotsDto>), 200)]
     public async Task<IActionResult> GetAvailableSlotOfDoctor(
-        [FromQuery] long? doctorId,
+        
         [FromQuery] string? prsnlAlias,
         [FromQuery] DateTime? fromDate,
         [FromQuery] DateTime? toDate)
@@ -75,23 +75,23 @@ public class AppointmentsController : ControllerBase
         {
             _logger.LogInformation(
                 "V2 - Getting available slots - DoctorId: {DoctorId}, Alias: {Alias}, From: {From}, To: {To}",
-                doctorId, prsnlAlias, fromDate, toDate);
+               prsnlAlias, fromDate, toDate);
 
             var request = new GetAvailableSlotsRequest
             {
-                DoctorId = doctorId,
+                
                 PrsnlAlias = prsnlAlias,
                 FromDate = fromDate ?? DateTime.Today,
                 ToDate = toDate ?? DateTime.Today.AddDays(7)
             };
 
-            if (!request.DoctorId.HasValue && string.IsNullOrWhiteSpace(request.PrsnlAlias))
+            if ( string.IsNullOrWhiteSpace(request.PrsnlAlias))
             {
                 return BadRequest(new { message = "Either DoctorId or PrsnlAlias is required" });
             }
 
             _logger.LogInformation("V2 - Parsed request: DoctorId={DoctorId}, Alias={Alias}, From={From}, To={To}",
-                request.DoctorId, request.PrsnlAlias, request.FromDate, request.ToDate);
+                request.PrsnlAlias, request.FromDate, request.ToDate);
 
             var slots = await _appointmentRepository.GetAvailableSlotsOfDoctorAsync(request);
 
@@ -101,8 +101,8 @@ public class AppointmentsController : ControllerBase
             { 
                 debug = new 
                 {
-                    requestReceived = new { doctorId, prsnlAlias, fromDate, toDate },
-                    requestParsed = new { request.DoctorId, request.PrsnlAlias, request.FromDate, request.ToDate },
+                    requestReceived = new {  prsnlAlias, fromDate, toDate },
+                    requestParsed = new { request.PrsnlAlias, request.FromDate, request.ToDate },
                     slotsCount = slots?.Count ?? 0
                 },
                 data = slots

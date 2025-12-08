@@ -85,7 +85,7 @@ public class ModifyAppointmentRequest
 /// </summary>
 public class GetAvailableSlotsRequest
 {
-    public long? DoctorId { get; set; }
+    
     public DateTime FromDate { get; set; }
     public DateTime ToDate { get; set; }
     public string? PrsnlAlias { get; set; } // Doctor NPI

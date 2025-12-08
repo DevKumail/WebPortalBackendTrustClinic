@@ -207,22 +207,21 @@ public class AppointmentRepository : IAppointmentRepository
         var slots = new List<DoctorSlotsDto>();
         long slotId = 1000000; // Starting slot ID
 
-        Console.WriteLine($"[DEBUG] Request - DoctorId: {request.DoctorId}, Alias: {request.PrsnlAlias}, From: {request.FromDate}, To: {request.ToDate}");
+        Console.WriteLine($"[DEBUG] Request - Alias: {request.PrsnlAlias}, From: {request.FromDate}, To: {request.ToDate}");
 
         // Get provider info - Try with more flexible criteria
         var providerQuery = @"
             SELECT TOP 1 * FROM HREmployee 
             WHERE (
-                (@Alias IS NOT NULL AND ProvNPI = @Alias) OR 
-                (@DoctorId IS NOT NULL AND EmpId = @DoctorId)
+                (@Alias IS NOT NULL AND ProvNPI = @Alias)
             ) 
             AND Active = 1";
         
-        Console.WriteLine($"[DEBUG] Searching provider with DoctorId={request.DoctorId}, Alias={request.PrsnlAlias}");
+        Console.WriteLine($"[DEBUG] Searching provider with  Alias={request.PrsnlAlias}");
         
         var provider = await _primaryConnection.QueryFirstOrDefaultAsync<HREmployee>(
             providerQuery,
-            new { Alias = request.PrsnlAlias, DoctorId = request.DoctorId });
+            new { Alias = request.PrsnlAlias });
 
         if (provider == null)
         {
