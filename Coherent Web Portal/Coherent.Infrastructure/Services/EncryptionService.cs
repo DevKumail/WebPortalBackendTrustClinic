@@ -12,11 +12,13 @@ public class EncryptionService : IEncryptionService
 {
     private readonly byte[] _encryptionKey;
     private readonly byte[] _iv;
+    private readonly string _legacyPasswordToken;
 
     public EncryptionService(IConfiguration configuration)
     {
         var key = configuration["Encryption:Key"] ?? throw new InvalidOperationException("Encryption key not configured");
         var iv = configuration["Encryption:IV"] ?? throw new InvalidOperationException("Encryption IV not configured");
+        _legacyPasswordToken = configuration["LegacyAuth:PasswordToken"] ?? "pragmedic";
         
         _encryptionKey = Convert.FromBase64String(key);
         _iv = Convert.FromBase64String(iv);
@@ -94,5 +96,63 @@ public class EncryptionService : IEncryptionService
     {
         var computedHash = HashSecurityKey(securityKey);
         return computedHash == securityKeyHash;
+    }
+
+    public string LegacyEncryptPassword(string plainText, string token)
+    {
+        if (string.IsNullOrEmpty(plainText))
+            return plainText;
+
+        if (string.IsNullOrEmpty(token))
+            throw new ArgumentException("Legacy password token is required", nameof(token));
+
+        using var des = new TripleDESCryptoServiceProvider();
+        des.IV = new byte[8];
+
+#pragma warning disable SYSLIB0023
+        using var pdb = new PasswordDeriveBytes(token, Array.Empty<byte>());
+        des.Key = pdb.CryptDeriveKey("RC2", "MD5", 128, new byte[8]);
+#pragma warning restore SYSLIB0023
+
+        var plainBytes = Encoding.UTF8.GetBytes(plainText);
+
+        using var ms = new MemoryStream((plainBytes.Length * 2) - 1);
+        using (var cs = new CryptoStream(ms, des.CreateEncryptor(), CryptoStreamMode.Write))
+        {
+            cs.Write(plainBytes, 0, plainBytes.Length);
+            cs.FlushFinalBlock();
+        }
+
+        var encryptedBytes = ms.ToArray();
+        return Convert.ToBase64String(encryptedBytes);
+    }
+
+    public string LegacyDecryptPassword(string cipherText, string token)
+    {
+        if (string.IsNullOrEmpty(cipherText))
+            return cipherText;
+
+        if (string.IsNullOrEmpty(token))
+            throw new ArgumentException("Legacy password token is required", nameof(token));
+
+        using var des = new TripleDESCryptoServiceProvider();
+        des.IV = new byte[8];
+
+#pragma warning disable SYSLIB0023
+        using var pdb = new PasswordDeriveBytes(token, Array.Empty<byte>());
+        des.Key = pdb.CryptDeriveKey("RC2", "MD5", 128, new byte[8]);
+#pragma warning restore SYSLIB0023
+
+        var encryptedBytes = Convert.FromBase64String(cipherText);
+
+        using var ms = new MemoryStream(cipherText.Length);
+        using (var cs = new CryptoStream(ms, des.CreateDecryptor(), CryptoStreamMode.Write))
+        {
+            cs.Write(encryptedBytes, 0, encryptedBytes.Length);
+            cs.FlushFinalBlock();
+        }
+
+        var plainBytes = ms.ToArray();
+        return Encoding.UTF8.GetString(plainBytes);
     }
 }

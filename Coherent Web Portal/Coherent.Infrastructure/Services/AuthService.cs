@@ -38,6 +38,106 @@ public class AuthService : IAuthService
         try
         {
             using var connection = _connectionFactory.CreatePrimaryConnection();
+            if (!string.IsNullOrWhiteSpace(request.RegCode))
+            {
+                using var softwareCustomersConnection = _connectionFactory.CreateSoftwareCustomersConnection();
+                var customerLoginInfoRepository = new CustomerLoginInfoRepository(softwareCustomersConnection);
+                var token = await customerLoginInfoRepository.GetTokenByRegistrationCodeAsync(request.RegCode);
+
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    await _auditService.LogActionAsync(
+                        null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                        null, null, null, ipAddress, userAgent, "Primary",
+                        "Authentication", "High", false, $"Token not found for RegCode {request.RegCode}");
+
+                    return new AuthResult
+                    {
+                        IsSuccess = false,
+                        Message = "Invalid username or password"
+                    };
+                }
+
+                var hrRepository = new HREmployeeRepository(connection);
+                var employee = await hrRepository.GetByUsernameAsync(request.Username);
+
+                if (employee == null || !employee.Active)
+                {
+                    await _auditService.LogActionAsync(
+                        null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                        null, null, null, ipAddress, userAgent, "Primary",
+                        "Authentication", "Medium", false, "Invalid username or employee inactive");
+
+                    return new AuthResult
+                    {
+                        IsSuccess = false,
+                        Message = "Invalid username or password"
+                    };
+                }
+
+                if (string.IsNullOrEmpty(employee.Pass))
+                {
+                    await _auditService.LogActionAsync(
+                        null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                        employee.EmpId.ToString(), null, null, ipAddress, userAgent,
+                        "Primary", "Authentication", "High", false, "Password not set for employee");
+
+                    return new AuthResult
+                    {
+                        IsSuccess = false,
+                        Message = "Invalid username or password"
+                    };
+                }
+
+                var encryptedInputPassword = _encryptionService.LegacyEncryptPassword(request.Password, token!);
+
+                if (!string.Equals(encryptedInputPassword, employee.Pass))
+                {
+                    await _auditService.LogActionAsync(
+                        null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                        employee.EmpId.ToString(), null, null, ipAddress, userAgent,
+                        "Primary", "Authentication", "High", false, "Invalid password");
+
+                    return new AuthResult
+                    {
+                        IsSuccess = false,
+                        Message = "Invalid username or password"
+                    };
+                }
+
+                var hrUserDto = new UserDto
+                {
+                    Id = Guid.NewGuid(),
+                    Username = employee.UserName ?? request.Username,
+                    Email = employee.Email ?? string.Empty,
+                    FirstName = employee.FName ?? string.Empty,
+                    LastName = employee.LName ?? string.Empty,
+                    PhoneNumber = employee.Phone ?? string.Empty,
+                    IsActive = employee.Active,
+                    Roles = new List<string> { "HREmployee" },
+                    Permissions = new List<string>()
+                };
+
+                var accessTokenForHr = _jwtTokenService.GenerateAccessToken(
+                    hrUserDto, hrUserDto.Roles, hrUserDto.Permissions);
+
+                await _auditService.LogActionAsync(
+                    null, hrUserDto.Username, "LOGIN_SUCCESS_HR", "HREmployee",
+                    employee.EmpId.ToString(), null, null, ipAddress, userAgent,
+                    "Primary", "Authentication", "Low", true);
+
+                return new AuthResult
+                {
+                    IsSuccess = true,
+                    Message = "Login successful",
+                    AccessToken = accessTokenForHr,
+                    RefreshToken = null,
+                    AccessTokenExpiry = DateTime.UtcNow.AddMinutes(int.Parse(_configuration["Jwt:AccessTokenExpiryMinutes"] ?? "60")),
+                    RefreshTokenExpiry = null,
+                    User = hrUserDto
+                };
+            }
+
             var userRepository = new UserRepository(connection);
 
             var user = await userRepository.GetByUsernameAsync(request.Username);

@@ -34,12 +34,22 @@ public class DatabaseConnectionFactory
         return new SqlConnection(connectionString);
     }
 
+    public IDbConnection CreateSoftwareCustomersConnection()
+    {
+        var connectionString = _configuration.GetConnectionString("SoftwareCustomer");
+        if (string.IsNullOrEmpty(connectionString))
+            throw new InvalidOperationException("SoftwareCustomer database connection string is not configured");
+
+        return new SqlConnection(connectionString);
+    }
+
     public IDbConnection CreateConnection(string databaseSource)
     {
         return databaseSource.ToLower() switch
         {
             "primary" => CreatePrimaryConnection(),
             "secondary" => CreateSecondaryConnection(),
+            "softwarecustomers" => CreateSoftwareCustomersConnection(),
             _ => throw new ArgumentException($"Invalid database source: {databaseSource}")
         };
     }

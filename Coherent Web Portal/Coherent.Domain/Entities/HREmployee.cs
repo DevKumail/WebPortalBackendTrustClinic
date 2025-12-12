@@ -16,4 +16,9 @@ public class HREmployee
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public string? Speciality { get; set; }
+    public string? UserName { get; set; }
+    public string? Pass { get; set; }
+    public int? RoleId { get; set; }
+    public bool VIPPatientAccess { get; set; }
+    public int? DepartmentID { get; set; }
 }

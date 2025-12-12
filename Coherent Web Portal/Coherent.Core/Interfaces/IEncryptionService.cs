@@ -12,4 +12,6 @@ public interface IEncryptionService
     string GenerateSecurityKey();
     string HashSecurityKey(string securityKey);
     bool VerifySecurityKey(string securityKey, string securityKeyHash);
+    string LegacyEncryptPassword(string plainText, string token);
+    string LegacyDecryptPassword(string cipherText, string token);
 }
