@@ -204,6 +204,16 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IThirdPartyService, ThirdPartyService>();
 
+// Register Appointment Scheduling (SP-based legacy parity)
+builder.Services.AddScoped<IAppointmentSchedulingRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreatePrimaryConnection();
+    return new Coherent.Infrastructure.Repositories.AppointmentSchedulingRepository(connection);
+});
+
+builder.Services.AddScoped<IAppointmentSchedulingService, Coherent.Infrastructure.Services.AppointmentSchedulingService>();
+
 // Register Patient Repository
 builder.Services.AddScoped<IPatientRepository>(provider =>
 {

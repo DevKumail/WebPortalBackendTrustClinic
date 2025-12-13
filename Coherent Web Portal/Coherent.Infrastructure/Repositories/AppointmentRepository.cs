@@ -94,7 +94,7 @@ public class AppointmentRepository : IAppointmentRepository
                 AppDate = appDate,
                 AppDateTime = appDateTime,
                 Duration = 15, // Default 15 minutes
-                Reason = request.Reason,
+                //Reason = request.Reason,
                 Notes = request.Notes,
                 CreatedDate = DateStringConversion.DateToString(DateTime.Now)
             };

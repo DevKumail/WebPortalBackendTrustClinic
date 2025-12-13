@@ -1,4 +1,5 @@
 using Coherent.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +15,13 @@ public class ThirdPartyAuthAttribute : Attribute, IAsyncAuthorizationFilter
 {
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
+        // If endpoint explicitly allows anonymous access, skip security-key validation.
+        // This enables selective anonymous access even when [ThirdPartyAuth] is applied at controller level.
+        if (context.ActionDescriptor.EndpointMetadata.OfType<IAllowAnonymous>().Any())
+        {
+            return;
+        }
+
         // Get security key from header
         if (!context.HttpContext.Request.Headers.TryGetValue("X-Security-Key", out var securityKey) ||
             string.IsNullOrWhiteSpace(securityKey))

@@ -151,6 +151,27 @@ public class MedicationDto
     public bool? IsActive { get; set; }
 }
 
+ public class MedicationV2Dto
+ {
+     public long MedicationId { get; set; }
+     public string? Mrno { get; set; }
+     public long? VisitAccountNo { get; set; }
+     public string? Rx { get; set; }
+     public string? Dose { get; set; }
+     public string? ProviderName { get; set; }
+     public string? Route { get; set; }
+     public string? Frequency { get; set; }
+     public string? Duration { get; set; }
+     public string? Quantity { get; set; }
+     public string? PrescriptionDate { get; set; }
+     public string? StartDate { get; set; }
+     public string? StopDate { get; set; }
+     public string? DaysLeft { get; set; }
+     public string? ProviderImage { get; set; }
+     public string? Instructions { get; set; }
+     public string? Status { get; set; }
+ }
+
 /// <summary>
 /// Allergy DTO
 /// </summary>
@@ -158,11 +179,36 @@ public class AllergyDto
 {
     public long AllergyId { get; set; }
     public string? MRNO { get; set; }
+    public long? VisitAccountNo { get; set; }
+    public int? TypeId { get; set; }
     public string? AllergyType { get; set; } // Drug, Food, Environmental
+    public string? ViewAllergyTypeName { get; set; }
     public string? Allergen { get; set; }
     public string? Reaction { get; set; }
     public string? Severity { get; set; } // Mild, Moderate, Severe
     public DateTime? OnsetDate { get; set; }
+    public string? StartDate { get; set; }
+    public string? EndDate { get; set; }
+    public int? Status { get; set; }
+    public long? ProviderId { get; set; }
+    public string? CreatedDate { get; set; }
+    public string? SeverityCode { get; set; }
     public string? Notes { get; set; }
     public bool? IsActive { get; set; }
+}
+
+public class DiagnosisDto
+{
+    public long Id { get; set; }
+    public long? VisitAccountNo { get; set; }
+    public string? ICD9Code { get; set; }
+    public bool? Confidential { get; set; }
+    public string? LastUpdatedBy { get; set; }
+    public string? LastUpdatedDate { get; set; }
+    public string? MRNO { get; set; }
+    public string? ICD9Description { get; set; }
+    public long? ProviderId { get; set; }
+    public string? VisitDate { get; set; }
+    public string? DoctorName { get; set; }
+    public string? Speciality { get; set; }
 }

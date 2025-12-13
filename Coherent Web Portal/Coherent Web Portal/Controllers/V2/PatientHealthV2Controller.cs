@@ -1,8 +1,9 @@
+using Asp.Versioning;
 using Coherent.Core.DTOs;
 using Coherent.Core.Interfaces;
 using Coherent.Infrastructure.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Asp.Versioning;
 
 namespace Coherent.Web.Portal.Controllers.V2;
 
@@ -30,6 +31,7 @@ public class PatientHealthController : ControllerBase
     /// <summary>
     /// 4.3 Get Vital Signs by MRNO (V2 - Mobile App)
     /// </summary>
+    [AllowAnonymous]
     [HttpGet("GetVitalSignsByMRNO")]
     [ProducesResponseType(typeof(VitalSignsDto), 200)]
     [ProducesResponseType(404)]
@@ -62,6 +64,7 @@ public class PatientHealthController : ControllerBase
     /// <summary>
     /// 4.4 Get Medications by MRNO (V2 - Mobile App)
     /// </summary>
+    [AllowAnonymous]
     [HttpGet("GetMedicationsByMRNO")]
     [ProducesResponseType(typeof(List<MedicationDto>), 200)]
     public async Task<IActionResult> GetMedicationsByMRNO([FromQuery] string MRNO)
@@ -83,10 +86,35 @@ public class PatientHealthController : ControllerBase
             return StatusCode(500, new { message = "An error occurred while retrieving medications" });
         }
     }
+    [AllowAnonymous]
+    [HttpGet("GetMedicationsByMRNOV2")]
+    [ProducesResponseType(typeof(List<MedicationV2Dto>), 200)]
+    public async Task<IActionResult> GetMedicationsByMRNOV2([FromQuery] string MRNO)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(MRNO))
+                return BadRequest(new { message = "MRNO is required" });
+
+            _logger.LogInformation("V2 - Getting medications (payload v2) for MRNO: {MRNO}", MRNO);
+
+            var medications = await _patientHealthRepository.GetMedicationsV2ByMRNOAsync(MRNO);
+
+            return Ok(medications);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "V2 - Error getting medications (payload v2) for MRNO: {MRNO}", MRNO);
+            return StatusCode(500, new { message = "An error occurred while retrieving medications" });
+        }
+    }
 
     /// <summary>
     /// 4.5 Get Allergies by MRNO (V2 - Mobile App)
     /// </summary>
+    /// 
+
+    [AllowAnonymous]
     [HttpGet("GetAllergyByMRNO")]
     [ProducesResponseType(typeof(List<AllergyDto>), 200)]
     public async Task<IActionResult> GetAllergyByMRNO([FromQuery] string MRNO)
@@ -106,6 +134,29 @@ public class PatientHealthController : ControllerBase
         {
             _logger.LogError(ex, "V2 - Error getting allergies for MRNO: {MRNO}", MRNO);
             return StatusCode(500, new { message = "An error occurred while retrieving allergies" });
+        }
+    }
+
+    [AllowAnonymous]
+    [HttpGet("GetDiagnosisByMRNO")]
+    [ProducesResponseType(typeof(List<DiagnosisDto>), 200)]
+    public async Task<IActionResult> GetDiagnosisByMRNO([FromQuery] string MRNO)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(MRNO))
+                return BadRequest(new { message = "MRNO is required" });
+
+            _logger.LogInformation("V2 - Getting diagnosis for MRNO: {MRNO}", MRNO);
+
+            var diagnosis = await _patientHealthRepository.GetDiagnosisByMRNOAsync(MRNO);
+
+            return Ok(diagnosis);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "V2 - Error getting diagnosis for MRNO: {MRNO}", MRNO);
+            return StatusCode(500, new { message = "An error occurred while retrieving diagnosis" });
         }
     }
 }
