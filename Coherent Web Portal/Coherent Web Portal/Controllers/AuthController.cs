@@ -45,19 +45,9 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("refresh")]
     [AllowAnonymous]
-    public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+    public IActionResult RefreshToken([FromBody] RefreshTokenRequest request)
     {
-        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
-        var userAgent = Request.Headers["User-Agent"].ToString();
-
-        var result = await _authService.RefreshTokenAsync(request.RefreshToken, ipAddress, userAgent);
-
-        if (!result.IsSuccess)
-        {
-            return Unauthorized(new { message = result.Message });
-        }
-
-        return Ok(result);
+        return BadRequest(new { message = "Refresh token is not supported" });
     }
 
     /// <summary>
@@ -67,18 +57,25 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> Logout()
     {
+        var token = Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return Unauthorized();
+        }
+
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
         if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
         {
             return Unauthorized();
         }
 
-        var result = await _authService.LogoutAsync(userId);
+        var result = await _authService.LogoutAsync(userId, token);
 
-        if (!result)
-        {
+        if (!result.IsSuccess)
             return BadRequest(new { message = "Logout failed" });
-        }
+
+        if (result.AlreadyLoggedOut)
+            return Ok(new { message = "Already logged out" });
 
         return Ok(new { message = "Logout successful" });
     }

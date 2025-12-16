@@ -4,6 +4,7 @@ using Coherent.Infrastructure.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Asp.Versioning;
+using System.Globalization;
 
 namespace Coherent.Web.Portal.Controllers.V2;
 
@@ -132,15 +133,34 @@ public class AppointmentsController : ControllerBase
         {
             _logger.LogInformation(
                 "V2 - Booking appointment - MRNO: {MRNO}, DoctorId: {DoctorId}",
-                request.MRNO, request.DoctorId);
+                request.MRNo, request.DoctorID);
 
-            if (string.IsNullOrWhiteSpace(request.MRNO))
-                return BadRequest(new { message = "MRNO is required" });
+            if (string.IsNullOrWhiteSpace(request.MRNo))
+                return BadRequest(new { message = "MRNo is required" });
 
-            if (request.DoctorId <= 0)
-                return BadRequest(new { message = "Valid DoctorId is required" });
+            if (string.IsNullOrWhiteSpace(request.DoctorID))
+                return BadRequest(new { message = "doctorID is required" });
 
-            if (request.AppointmentDateTime < DateTime.Now)
+            if (string.IsNullOrWhiteSpace(request.FacilityID))
+                return BadRequest(new { message = "facilityID is required" });
+
+            if (string.IsNullOrWhiteSpace(request.ServiceID))
+                return BadRequest(new { message = "serviceID is required" });
+
+            if (string.IsNullOrWhiteSpace(request.Time))
+                return BadRequest(new { message = "time is required" });
+
+            if (!DateTime.TryParseExact(
+                    request.Time,
+                    "yyyyMMddHHmmss",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var appointmentDateTime))
+            {
+                return BadRequest(new { message = "Invalid time format. Expected yyyyMMddHHmmss" });
+            }
+
+            if (appointmentDateTime < DateTime.Now)
                 return BadRequest(new { message = "Appointment date/time cannot be in the past" });
 
             var appointmentId = await _appointmentRepository.BookAppointmentAsync(request);
@@ -160,7 +180,7 @@ public class AppointmentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "V2 - Error booking appointment - MRNO: {MRNO}", request?.MRNO);
+            _logger.LogError(ex, "V2 - Error booking appointment - MRNO: {MRNO}", request?.MRNo);
             return StatusCode(500, new 
             { 
                 message = "An error occurred while booking the appointment",
@@ -174,7 +194,6 @@ public class AppointmentsController : ControllerBase
     /// <summary>
     /// 4.1.4 Modify Appointment (V2 - Mobile App)
     /// </summary>
-    [HttpPost("ChangeBookedAppointment")]
     [HttpPut("ChangeBookedAppointment")]
     [ProducesResponseType(typeof(object), 200)]
     public async Task<IActionResult> ChangeBookedAppointment([FromBody] ModifyAppointmentRequest request)
@@ -197,11 +216,47 @@ public class AppointmentsController : ControllerBase
 
             if (request.Status.ToLower() == "rescheduled")
             {
-                if (!request.AppointmentDateTime.HasValue)
-                    return BadRequest(new { message = "New appointment date/time is required for rescheduling" });
+                if (string.IsNullOrWhiteSpace(request.DoctorID))
+                    return BadRequest(new { message = "doctorID is required for rescheduling" });
 
-                if (request.AppointmentDateTime.Value < DateTime.Now)
+                if (string.IsNullOrWhiteSpace(request.FacilityID))
+                    return BadRequest(new { message = "facilityID is required for rescheduling" });
+
+                if (string.IsNullOrWhiteSpace(request.ServiceID))
+                    return BadRequest(new { message = "serviceID is required for rescheduling" });
+
+                if (string.IsNullOrWhiteSpace(request.MRNo))
+                    return BadRequest(new { message = "mrNo is required for rescheduling" });
+
+                if (string.IsNullOrWhiteSpace(request.Time))
+                    return BadRequest(new { message = "time is required for rescheduling" });
+
+                if (!DateTime.TryParseExact(
+                        request.Time,
+                        "yyyyMMddHHmmss",
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
+                        out var newAppointmentDateTime))
+                {
+                    return BadRequest(new { message = "Invalid time format. Expected yyyyMMddHHmmss" });
+                }
+
+                if (newAppointmentDateTime < DateTime.Now)
                     return BadRequest(new { message = "New appointment date/time cannot be in the past" });
+
+                var existingTime = existingAppointment.AppDateTime?.Trim();
+                var requestedTime = request.Time.Trim();
+
+                var doctorSame = false;
+                if (long.TryParse(request.DoctorID, out var requestedDoctorId))
+                    doctorSame = requestedDoctorId == existingAppointment.ProviderId;
+
+                if (!string.IsNullOrWhiteSpace(existingTime) &&
+                    string.Equals(existingTime, requestedTime, StringComparison.OrdinalIgnoreCase) &&
+                    (doctorSame || requestedDoctorId == 0))
+                {
+                    return BadRequest(new { message = "New slot must be different from existing slot" });
+                }
             }
 
             var success = await _appointmentRepository.ModifyAppointmentAsync(request);
@@ -225,6 +280,50 @@ public class AppointmentsController : ControllerBase
             return StatusCode(500, new 
             { 
                 message = "An error occurred while modifying the appointment",
+                error = ex.Message,
+                stackTrace = ex.StackTrace,
+                innerException = ex.InnerException?.Message
+            });
+        }
+    }
+
+    [HttpPost("CancelAppointment")]
+    [ProducesResponseType(typeof(object), 200)]
+    public async Task<IActionResult> CancelAppointment([FromBody] CancelAppointmentRequest request)
+    {
+        try
+        {
+            _logger.LogInformation("V2 - Cancelling appointment - AppBookingId: {AppBookingId}", request.AppBookingId);
+
+            if (request.AppBookingId <= 0)
+                return BadRequest(new { message = "Valid appBookingId is required" });
+
+            var modifyRequest = new ModifyAppointmentRequest
+            {
+                AppId = request.AppBookingId,
+                Status = "cancel"
+            };
+
+            var success = await _appointmentRepository.ModifyAppointmentAsync(modifyRequest);
+
+            if (success)
+            {
+                return Ok(new
+                {
+                    message = "Appointment cancelled successfully",
+                    appBookingId = request.AppBookingId,
+                    status = "cancelled"
+                });
+            }
+
+            return StatusCode(500, new { message = "Failed to cancel appointment" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "V2 - Error cancelling appointment - AppBookingId: {AppBookingId}", request?.AppBookingId);
+            return StatusCode(500, new
+            {
+                message = "An error occurred while cancelling the appointment",
                 error = ex.Message,
                 stackTrace = ex.StackTrace,
                 innerException = ex.InnerException?.Message

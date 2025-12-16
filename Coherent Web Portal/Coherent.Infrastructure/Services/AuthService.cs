@@ -2,7 +2,10 @@ using Coherent.Core.DTOs;
 using Coherent.Core.Interfaces;
 using Coherent.Infrastructure.Data;
 using Coherent.Infrastructure.Repositories;
+using Dapper;
 using Microsoft.Extensions.Configuration;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Coherent.Infrastructure.Services;
 
@@ -38,163 +41,186 @@ public class AuthService : IAuthService
         try
         {
             using var connection = _connectionFactory.CreatePrimaryConnection();
-            if (!string.IsNullOrWhiteSpace(request.RegCode))
+            if (string.IsNullOrWhiteSpace(request.RegCode))
             {
-                using var softwareCustomersConnection = _connectionFactory.CreateSoftwareCustomersConnection();
-                var customerLoginInfoRepository = new CustomerLoginInfoRepository(softwareCustomersConnection);
-                var token = await customerLoginInfoRepository.GetTokenByRegistrationCodeAsync(request.RegCode);
-
-                if (string.IsNullOrWhiteSpace(token))
-                {
-                    await _auditService.LogActionAsync(
-                        null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
-                        null, null, null, ipAddress, userAgent, "Primary",
-                        "Authentication", "High", false, $"Token not found for RegCode {request.RegCode}");
-
-                    return new AuthResult
-                    {
-                        IsSuccess = false,
-                        Message = "Invalid username or password"
-                    };
-                }
-
-                var hrRepository = new HREmployeeRepository(connection);
-                var employee = await hrRepository.GetByUsernameAsync(request.Username);
-
-                if (employee == null || !employee.Active)
-                {
-                    await _auditService.LogActionAsync(
-                        null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
-                        null, null, null, ipAddress, userAgent, "Primary",
-                        "Authentication", "Medium", false, "Invalid username or employee inactive");
-
-                    return new AuthResult
-                    {
-                        IsSuccess = false,
-                        Message = "Invalid username or password"
-                    };
-                }
-
-                if (string.IsNullOrEmpty(employee.Pass))
-                {
-                    await _auditService.LogActionAsync(
-                        null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
-                        employee.EmpId.ToString(), null, null, ipAddress, userAgent,
-                        "Primary", "Authentication", "High", false, "Password not set for employee");
-
-                    return new AuthResult
-                    {
-                        IsSuccess = false,
-                        Message = "Invalid username or password"
-                    };
-                }
-
-                var encryptedInputPassword = _encryptionService.LegacyEncryptPassword(request.Password, token!);
-
-                if (!string.Equals(encryptedInputPassword, employee.Pass))
-                {
-                    await _auditService.LogActionAsync(
-                        null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
-                        employee.EmpId.ToString(), null, null, ipAddress, userAgent,
-                        "Primary", "Authentication", "High", false, "Invalid password");
-
-                    return new AuthResult
-                    {
-                        IsSuccess = false,
-                        Message = "Invalid username or password"
-                    };
-                }
-
-                var hrUserDto = new UserDto
-                {
-                    Id = Guid.NewGuid(),
-                    Username = employee.UserName ?? request.Username,
-                    Email = employee.Email ?? string.Empty,
-                    FirstName = employee.FName ?? string.Empty,
-                    LastName = employee.LName ?? string.Empty,
-                    PhoneNumber = employee.Phone ?? string.Empty,
-                    IsActive = employee.Active,
-                    Roles = new List<string> { "HREmployee" },
-                    Permissions = new List<string>()
-                };
-
-                var accessTokenForHr = _jwtTokenService.GenerateAccessToken(
-                    hrUserDto, hrUserDto.Roles, hrUserDto.Permissions);
-
                 await _auditService.LogActionAsync(
-                    null, hrUserDto.Username, "LOGIN_SUCCESS_HR", "HREmployee",
-                    employee.EmpId.ToString(), null, null, ipAddress, userAgent,
-                    "Primary", "Authentication", "Low", true);
+                    null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                    null, null, null, ipAddress, userAgent, "Primary",
+                    "Authentication", "Medium", false, "RegCode is required");
 
                 return new AuthResult
                 {
-                    IsSuccess = true,
-                    Message = "Login successful",
-                    AccessToken = accessTokenForHr,
-                    RefreshToken = null,
-                    AccessTokenExpiry = DateTime.UtcNow.AddMinutes(int.Parse(_configuration["Jwt:AccessTokenExpiryMinutes"] ?? "60")),
-                    RefreshTokenExpiry = null,
-                    User = hrUserDto
+                    IsSuccess = false,
+                    Message = "RegCode is required"
                 };
             }
 
-            var userRepository = new UserRepository(connection);
+            using var softwareCustomersConnection = _connectionFactory.CreateSoftwareCustomersConnection();
+            var customerLoginInfoRepository = new CustomerLoginInfoRepository(softwareCustomersConnection);
+            var token = await customerLoginInfoRepository.GetTokenByRegistrationCodeAsync(request.RegCode);
 
-            var user = await userRepository.GetByUsernameAsync(request.Username);
-            
-            if (user == null || !user.IsActive)
+            if (string.IsNullOrWhiteSpace(token))
             {
                 await _auditService.LogActionAsync(
-                    null, request.Username, "LOGIN_FAILED", "User",
-                    null, null, null, ipAddress, userAgent, "Primary", 
-                    "Authentication", "Medium", false, "Invalid username or user inactive");
-                
-                return new AuthResult 
-                { 
-                    IsSuccess = false, 
-                    Message = "Invalid username or password" 
+                    null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                    null, null, null, ipAddress, userAgent, "Primary",
+                    "Authentication", "High", false, $"Token not found for RegCode {request.RegCode}");
+
+                return new AuthResult
+                {
+                    IsSuccess = false,
+                    Message = "Invalid username or password"
                 };
             }
 
-            if (!_encryptionService.VerifyPassword(request.Password, user.PasswordHash))
+            var hrRepository = new HREmployeeRepository(connection);
+            var employee = await hrRepository.GetByUsernameAsync(request.Username);
+
+            if (employee == null || !employee.Active)
             {
                 await _auditService.LogActionAsync(
-                    user.Id, user.Username, "LOGIN_FAILED", "User",
-                    user.Id.ToString(), null, null, ipAddress, userAgent, 
+                    null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                    null, null, null, ipAddress, userAgent, "Primary",
+                    "Authentication", "Medium", false, "Invalid username or employee inactive");
+
+                return new AuthResult
+                {
+                    IsSuccess = false,
+                    Message = "Invalid username or password"
+                };
+            }
+
+            if (string.IsNullOrEmpty(employee.Pass))
+            {
+                await _auditService.LogActionAsync(
+                    null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                    employee.EmpId.ToString(), null, null, ipAddress, userAgent,
+                    "Primary", "Authentication", "High", false, "Password not set for employee");
+
+                return new AuthResult
+                {
+                    IsSuccess = false,
+                    Message = "Invalid username or password"
+                };
+            }
+
+            var encryptedInputPassword = _encryptionService.LegacyEncryptPassword(request.Password, token);
+
+            if (!string.Equals(encryptedInputPassword, employee.Pass))
+            {
+                await _auditService.LogActionAsync(
+                    null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                    employee.EmpId.ToString(), null, null, ipAddress, userAgent,
                     "Primary", "Authentication", "High", false, "Invalid password");
-                
-                return new AuthResult 
-                { 
-                    IsSuccess = false, 
-                    Message = "Invalid username or password" 
+
+                return new AuthResult
+                {
+                    IsSuccess = false,
+                    Message = "Invalid username or password"
                 };
             }
 
-            var roles = (await userRepository.GetUserRolesAsync(user.Id)).ToList();
-            var permissions = (await userRepository.GetUserPermissionsAsync(user.Id)).ToList();
+            var hrUserDto = new UserDto
+            {
+                Id = Guid.NewGuid(),
+                Username = employee.UserName ?? request.Username,
+                Email = employee.Email ?? string.Empty,
+                FirstName = employee.FName ?? string.Empty,
+                LastName = employee.LName ?? string.Empty,
+                PhoneNumber = employee.Phone ?? string.Empty,
+                IsActive = employee.Active,
+                Roles = new List<string>(),
+                Permissions = new List<string>()
+            };
 
-            var accessToken = _jwtTokenService.GenerateAccessToken(
-                MapToUserDto(user, roles, permissions), roles, permissions);
-            
-            var refreshToken = _jwtTokenService.GenerateRefreshToken();
-            var refreshTokenExpiry = DateTime.UtcNow.AddDays(_refreshTokenExpiryDays);
+            var securityRepository = new SecurityRepository(connection);
 
-            await userRepository.UpdateRefreshTokenAsync(user.Id, refreshToken, refreshTokenExpiry);
+            if (employee.RoleId.HasValue)
+            {
+                var roleName = await securityRepository.GetRoleNameByRoleIdAsync(employee.RoleId.Value);
+                if (!string.IsNullOrWhiteSpace(roleName))
+                    hrUserDto.Roles.Add(roleName);
+            }
+
+            if (hrUserDto.Roles.Count == 0)
+                hrUserDto.Roles.Add("HREmployee");
+
+            var effectivePermissions = await securityRepository.GetEmployeeEffectivePermissionsByEmpIdAsync(employee.EmpId);
+            hrUserDto.Permissions = effectivePermissions
+                .Where(p => p.IsAllowed)
+                .Select(p => p.PermissionKey)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var accessTokenForHr = _jwtTokenService.GenerateAccessToken(
+                hrUserDto, hrUserDto.Roles, hrUserDto.Permissions);
+
+            try
+            {
+                var issuedAt = DateTime.UtcNow;
+                var expiresAt = issuedAt.AddMinutes(int.Parse(_configuration["Jwt:AccessTokenExpiryMinutes"] ?? "60"));
+                var tokenHash = ComputeSha256Hex(accessTokenForHr);
+                var tokenLast8 = accessTokenForHr.Length >= 8 ? accessTokenForHr.Substring(accessTokenForHr.Length - 8) : accessTokenForHr;
+
+                var rolesCsv = hrUserDto.Roles != null && hrUserDto.Roles.Count > 0
+                    ? string.Join(",", hrUserDto.Roles)
+                    : null;
+
+                var permissionsCsv = hrUserDto.Permissions != null && hrUserDto.Permissions.Count > 0
+                    ? string.Join(",", hrUserDto.Permissions)
+                    : null;
+
+                var insertSql = @"
+INSERT INTO dbo.SecAuthSession
+(
+    EmpId, Username, RegCode, TokenHash, TokenLast8,
+    IssuedAt, ExpiresAt, IpAddress, UserAgent,
+    RolesCsv, PermissionsCsv
+)
+VALUES
+(
+    @EmpId, @Username, @RegCode, @TokenHash, @TokenLast8,
+    @IssuedAt, @ExpiresAt, @IpAddress, @UserAgent,
+    @RolesCsv, @PermissionsCsv
+)";
+
+                await connection.ExecuteAsync(insertSql, new
+                {
+                    EmpId = employee.EmpId,
+                    Username = hrUserDto.Username,
+                    RegCode = request.RegCode,
+                    TokenHash = tokenHash,
+                    TokenLast8 = tokenLast8,
+                    IssuedAt = issuedAt,
+                    ExpiresAt = expiresAt,
+                    IpAddress = ipAddress,
+                    UserAgent = userAgent,
+                    RolesCsv = rolesCsv,
+                    PermissionsCsv = permissionsCsv
+                });
+            }
+            catch (Exception ex)
+            {
+                await _auditService.LogActionAsync(
+                    null, hrUserDto.Username, "AUTH_SESSION_LOG_FAILED", "SecAuthSession",
+                    employee.EmpId.ToString(), null, null, ipAddress, userAgent,
+                    "Primary", "Authentication", "Low", false, ex.Message);
+            }
 
             await _auditService.LogActionAsync(
-                user.Id, user.Username, "LOGIN_SUCCESS", "User",
-                user.Id.ToString(), null, null, ipAddress, userAgent, 
+                null, hrUserDto.Username, "LOGIN_SUCCESS_HR", "HREmployee",
+                employee.EmpId.ToString(), null, null, ipAddress, userAgent,
                 "Primary", "Authentication", "Low", true);
 
             return new AuthResult
             {
                 IsSuccess = true,
                 Message = "Login successful",
-                AccessToken = accessToken,
-                RefreshToken = refreshToken,
+                AccessToken = accessTokenForHr,
+                RefreshToken = null,
                 AccessTokenExpiry = DateTime.UtcNow.AddMinutes(int.Parse(_configuration["Jwt:AccessTokenExpiryMinutes"] ?? "60")),
-                RefreshTokenExpiry = refreshTokenExpiry,
-                User = MapToUserDto(user, roles, permissions)
+                RefreshTokenExpiry = null,
+                User = hrUserDto
             };
         }
         catch (Exception ex)
@@ -212,86 +238,86 @@ public class AuthService : IAuthService
         }
     }
 
-    public async Task<AuthResult> RefreshTokenAsync(string refreshToken, string ipAddress, string userAgent)
+    public async Task<(bool IsSuccess, bool AlreadyLoggedOut)> LogoutAsync(Guid userId, string token)
     {
         try
         {
             using var connection = _connectionFactory.CreatePrimaryConnection();
             var userRepository = new UserRepository(connection);
 
-            var user = await userRepository.GetByRefreshTokenAsync(refreshToken);
-            
-            if (user == null)
+            if (string.IsNullOrWhiteSpace(token))
+                return (false, false);
+
+            var tokenHash = ComputeSha256Hex(token);
+            var tokenLast8 = token.Length >= 8 ? token.Substring(token.Length - 8) : token;
+
+            var alreadyLoggedOut = await connection.QueryFirstOrDefaultAsync<int>(
+                "SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.SecAuthSession WHERE TokenHash = @TokenHash AND IsLoggedOut = 1) THEN 1 ELSE 0 END",
+                new { TokenHash = tokenHash }) == 1;
+
+            if (!alreadyLoggedOut)
             {
-                return new AuthResult 
-                { 
-                    IsSuccess = false, 
-                    Message = "Invalid or expired refresh token" 
-                };
+                var updated = await connection.ExecuteAsync(
+                    "UPDATE dbo.SecAuthSession SET IsLoggedOut = 1, LoggedOutAt = SYSUTCDATETIME() WHERE TokenHash = @TokenHash AND IsLoggedOut = 0",
+                    new { TokenHash = tokenHash });
+
+                if (updated == 0)
+                {
+                    // If the session wasn't logged (e.g. missing table row), insert a minimal revoked record to block further usage.
+                    await connection.ExecuteAsync(
+                        @"INSERT INTO dbo.SecAuthSession (EmpId, Username, RegCode, TokenHash, TokenLast8, IssuedAt, ExpiresAt, IsLoggedOut, LoggedOutAt)
+                          VALUES (NULL, NULL, NULL, @TokenHash, @TokenLast8, SYSUTCDATETIME(), SYSUTCDATETIME(), 1, SYSUTCDATETIME())",
+                        new { TokenHash = tokenHash, TokenLast8 = tokenLast8 });
+                }
+            }
+            
+            try
+            {
+                await userRepository.UpdateRefreshTokenAsync(userId, string.Empty, DateTime.UtcNow);
+            }
+            catch (Exception ex)
+            {
+                await _auditService.LogActionAsync(
+                    userId, string.Empty, "LOGOUT_REFRESH_TOKEN_CLEAR_FAILED", "User",
+                    userId.ToString(), null, null, string.Empty, string.Empty, "Primary",
+                    "Authentication", "Medium", false, ex.Message);
+
+                var isUsersTableMissing = ex.Message.Contains("Invalid object name", StringComparison.OrdinalIgnoreCase)
+                    && ex.Message.Contains("Users", StringComparison.OrdinalIgnoreCase);
+
+                if (!isUsersTableMissing)
+                    return (false, alreadyLoggedOut);
             }
 
-            var roles = (await userRepository.GetUserRolesAsync(user.Id)).ToList();
-            var permissions = (await userRepository.GetUserPermissionsAsync(user.Id)).ToList();
-
-            var newAccessToken = _jwtTokenService.GenerateAccessToken(
-                MapToUserDto(user, roles, permissions), roles, permissions);
-            
-            var newRefreshToken = _jwtTokenService.GenerateRefreshToken();
-            var refreshTokenExpiry = DateTime.UtcNow.AddDays(_refreshTokenExpiryDays);
-
-            await userRepository.UpdateRefreshTokenAsync(user.Id, newRefreshToken, refreshTokenExpiry);
+            string username = string.Empty;
+            try
+            {
+                var user = await userRepository.GetByIdAsync(userId);
+                username = user?.Username ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                await _auditService.LogActionAsync(
+                    userId, string.Empty, "LOGOUT_USER_LOOKUP_FAILED", "User",
+                    userId.ToString(), null, null, string.Empty, string.Empty, "Primary",
+                    "Authentication", "Low", false, ex.Message);
+            }
 
             await _auditService.LogActionAsync(
-                user.Id, user.Username, "TOKEN_REFRESH", "User",
-                user.Id.ToString(), null, null, ipAddress, userAgent, 
-                "Primary", "Authentication", "Low", true);
-
-            return new AuthResult
-            {
-                IsSuccess = true,
-                Message = "Token refreshed successfully",
-                AccessToken = newAccessToken,
-                RefreshToken = newRefreshToken,
-                AccessTokenExpiry = DateTime.UtcNow.AddMinutes(int.Parse(_configuration["Jwt:AccessTokenExpiryMinutes"] ?? "60")),
-                RefreshTokenExpiry = refreshTokenExpiry,
-                User = MapToUserDto(user, roles, permissions)
-            };
+                userId, username, "LOGOUT", "User",
+                userId.ToString(), null, null, "", "", "Primary",
+                "Authentication", "Low", true);
+            
+            return (true, alreadyLoggedOut);
         }
         catch (Exception ex)
         {
             await _auditService.LogActionAsync(
-                null, "", "TOKEN_REFRESH_ERROR", "User",
-                null, null, null, ipAddress, userAgent, "Primary", 
+                userId, string.Empty, "LOGOUT_ERROR", "User",
+                userId.ToString(), null, null, string.Empty, string.Empty, "Primary",
                 "Authentication", "High", false, ex.Message);
-            
-            return new AuthResult 
-            { 
-                IsSuccess = false, 
-                Message = "An error occurred during token refresh" 
-            };
-        }
-    }
 
-    public async Task<bool> LogoutAsync(Guid userId)
-    {
-        try
-        {
-            using var connection = _connectionFactory.CreatePrimaryConnection();
-            var userRepository = new UserRepository(connection);
-            
-            await userRepository.UpdateRefreshTokenAsync(userId, string.Empty, DateTime.UtcNow);
-            
-            var user = await userRepository.GetByIdAsync(userId);
-            await _auditService.LogActionAsync(
-                userId, user?.Username ?? "", "LOGOUT", "User",
-                userId.ToString(), null, null, "", "", "Primary", 
-                "Authentication", "Low", true);
-            
-            return true;
-        }
-        catch
-        {
-            return false;
+            return (false, false);
         }
     }
 
@@ -330,5 +356,14 @@ public class AuthService : IAuthService
             Roles = roles,
             Permissions = permissions
         };
+    }
+
+    private static string ComputeSha256Hex(string input)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        var sb = new StringBuilder(bytes.Length * 2);
+        foreach (var b in bytes)
+            sb.Append(b.ToString("x2"));
+        return sb.ToString();
     }
 }

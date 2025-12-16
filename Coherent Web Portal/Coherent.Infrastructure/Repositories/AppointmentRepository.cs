@@ -32,17 +32,20 @@ public class AppointmentRepository : IAppointmentRepository
                 sa.AppId,
                 sa.MRNo,
                 sa.ProviderId AS DoctorId,
-                he.FName + ' ' + he.MName + ' ' + he.LName AS DoctorName,
+                NULLIF(LTRIM(RTRIM(CONCAT(ISNULL(he.FName, ''), ' ', ISNULL(he.MName, ''), ' ', ISNULL(he.LName, '')))), '') AS DoctorName,
+                he.ProvNPI AS DoctorLicenseNo,
                 sa.SiteId,
-                sa.AppDate,
-                sa.AppDateTime,
+                sa.AppDate       AS AppDateRaw,
+                sa.AppDateTime  AS AppDateTimeRaw,
                 sa.Duration,
                 CASE sa.AppStatusId
                     WHEN 1 THEN 'Scheduled'
                     WHEN 2 THEN 'Rescheduled'
                     WHEN 3 THEN 'Cancelled'
                     ELSE 'Unknown'
-                END AS Status
+                END AS Status,
+                sa.EntryDateTime AS CreatedDateRaw,
+                sa.EnteredBy    AS CreatedBy
             FROM SchAppointment sa
             LEFT JOIN HREmployee he ON sa.ProviderId = he.EmpId
             WHERE sa.MRNo = @MRNo 
@@ -54,13 +57,22 @@ public class AppointmentRepository : IAppointmentRepository
         // Convert date strings to DateTime
         foreach (var apt in appointments)
         {
-            if (!string.IsNullOrEmpty(apt.AppointmentDate?.ToString()))
+            if (!string.IsNullOrEmpty(apt.AppDateRaw))
             {
-                apt.AppointmentDate = DateStringConversion.StringToDate(apt.AppointmentDate.ToString());
+                var date = DateStringConversion.StringToDate(apt.AppDateRaw);
+                apt.AppointmentDate = date == DateTime.MinValue ? null : date;
             }
-            if (!string.IsNullOrEmpty(apt.AppointmentDateTime?.ToString()))
+
+            if (!string.IsNullOrEmpty(apt.AppDateTimeRaw))
             {
-                apt.AppointmentDateTime = DateStringConversion.StringToDate(apt.AppointmentDateTime.ToString());
+                var dateTime = DateStringConversion.StringToDate(apt.AppDateTimeRaw);
+                apt.AppointmentDateTime = dateTime == DateTime.MinValue ? null : dateTime;
+            }
+
+            if (!string.IsNullOrEmpty(apt.CreatedDateRaw))
+            {
+                var created = DateStringConversion.StringToDate(apt.CreatedDateRaw);
+                apt.CreatedDate = created == DateTime.MinValue ? null : created;
             }
         }
 
@@ -75,31 +87,33 @@ public class AppointmentRepository : IAppointmentRepository
     {
         try
         {
-            var query = @"
-                INSERT INTO SchAppointment 
-                (MRNo, ProviderId, SiteId, AppDate, AppDateTime, Duration, AppStatusId, IsActive, Reason, Notes, CreatedDate, CreatedBy)
-                VALUES 
-                (@MRNo, @ProviderId, @SiteId, @AppDate, @AppDateTime, @Duration, 1, 1, @Reason, @Notes, @CreatedDate, 'System');
-                
-                SELECT CAST(SCOPE_IDENTITY() AS BIGINT);";
+            var parameters = new DynamicParameters();
 
-            var appDate = DateStringConversion.DateToShortString(request.AppointmentDateTime);
-            var appDateTime = DateStringConversion.DateToString(request.AppointmentDateTime);
+            parameters.Add("@bookingID", dbType: DbType.String, direction: ParameterDirection.Output, size: 20);
+            parameters.Add("@doctorID", request.DoctorID, DbType.String);
+            parameters.Add("@facilityID", request.FacilityID, DbType.String);
+            parameters.Add("@serviceID", request.ServiceID, DbType.String);
 
-            var parameters = new
-            {
-                MRNo = request.MRNO,
-                ProviderId = request.DoctorId,
-                SiteId = 1, // Default site, should be passed in request
-                AppDate = appDate,
-                AppDateTime = appDateTime,
-                Duration = 15, // Default 15 minutes
-                //Reason = request.Reason,
-                Notes = request.Notes,
-                CreatedDate = DateStringConversion.DateToString(DateTime.Now)
-            };
+            parameters.Add("@time", request.Time, DbType.String);
+            parameters.Add("@MRNo", request.MRNo, DbType.String);
 
-            return await _primaryConnection.ExecuteScalarAsync<long>(query, parameters);
+            await _primaryConnection.ExecuteAsync(
+                "MobileAppBookAppointment",
+                parameters,
+                commandType: CommandType.StoredProcedure);
+
+            var bookingIdString = parameters.Get<string>("@bookingID");
+
+            if (string.IsNullOrWhiteSpace(bookingIdString))
+                return 0;
+
+            if (!long.TryParse(bookingIdString, out var bookingId))
+                return 0;
+
+            if (bookingId <= 0)
+                return 0;
+
+            return bookingId;
         }
         catch (Exception ex)
         {
@@ -116,62 +130,60 @@ public class AppointmentRepository : IAppointmentRepository
     {
         try
         {
-            string query;
-            object parameters;
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
 
-            if (request.Status?.ToLower() == "cancel" || request.Status?.ToLower() == "cancelled")
+            var status = request.Status?.ToLowerInvariant();
+
+            if (status == "cancel" || status == "cancelled")
             {
-                // Cancel appointment
-                query = @"
-                    UPDATE SchAppointment 
-                    SET AppStatusId = 3, 
-                        IsActive = 0,
-                        Reason = @Reason,
-                        UpdatedDate = @UpdatedDate,
-                        UpdatedBy = 'System'
-                    WHERE AppId = @AppId";
+                var parameters = new DynamicParameters();
+                parameters.Add("@bookingID", request.AppId.ToString(), DbType.String);
 
-                parameters = new
+                var rows = await _primaryConnection.ExecuteAsync(
+                    "MobileAppCancelAppointment",
+                    parameters,
+                    commandType: CommandType.StoredProcedure);
+
+                return rows > 0;
+            }
+
+            if (status == "rescheduled")
+            {
+                // 1) Cancel old appointment via SP
+                var cancelParams = new DynamicParameters();
+                cancelParams.Add("@bookingID", request.AppId.ToString(), DbType.String);
+
+                var cancelRows = await _primaryConnection.ExecuteAsync(
+                    "MobileAppCancelAppointment",
+                    cancelParams,
+                    commandType: CommandType.StoredProcedure);
+
+                if (cancelRows <= 0)
+                    return false;
+
+                // 2) Book new appointment via SP
+                var newRequest = new BookAppointmentRequest
                 {
-                    AppId = request.AppId,
-                    Reason = request.Reason ?? "Cancelled by patient",
-                    UpdatedDate = DateStringConversion.DateToString(DateTime.Now)
+                    DoctorID = request.DoctorID,
+                    FacilityID = request.FacilityID,
+                    ServiceID = request.ServiceID,
+                    Time = request.Time,
+                    MRNo = request.MRNo
                 };
-            }
-            else if (request.Status?.ToLower() == "rescheduled" && request.AppointmentDateTime.HasValue)
-            {
-                // Reschedule appointment
-                var appDate = DateStringConversion.DateToShortString(request.AppointmentDateTime.Value);
-                var appDateTime = DateStringConversion.DateToString(request.AppointmentDateTime.Value);
 
-                query = @"
-                    UPDATE SchAppointment 
-                    SET AppStatusId = 2,
-                        AppDate = @AppDate,
-                        AppDateTime = @AppDateTime,
-                        Reason = @Reason,
-                        Notes = @Notes,
-                        UpdatedDate = @UpdatedDate,
-                        UpdatedBy = 'System'
-                    WHERE AppId = @AppId";
+                var newAppId = await BookAppointmentAsync(newRequest);
 
-                parameters = new
-                {
-                    AppId = request.AppId,
-                    AppDate = appDate,
-                    AppDateTime = appDateTime,
-                    Reason = request.Reason ?? "Rescheduled",
-                    Notes = request.Notes,
-                    UpdatedDate = DateStringConversion.DateToString(DateTime.Now)
-                };
-            }
-            else
-            {
-                return false;
+                if (newAppId <= 0)
+                    return false;
+
+                // Update request to reflect new appointment id for controller responses
+                request.AppId = newAppId;
+
+                return true;
             }
 
-            var rowsAffected = await _primaryConnection.ExecuteAsync(query, parameters);
-            return rowsAffected > 0;
+            return false;
         }
         catch (Exception ex)
         {

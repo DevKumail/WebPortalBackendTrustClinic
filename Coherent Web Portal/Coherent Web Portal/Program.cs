@@ -2,9 +2,11 @@ using Coherent.Core.Interfaces;
 using Coherent.Infrastructure.Data;
 using Coherent.Infrastructure.Middleware;
 using Coherent.Infrastructure.Services;
+using Dapper;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
 
@@ -148,6 +150,38 @@ builder.Services.AddAuthentication(options =>
 {
     options.RequireHttpsMetadata = true; // ADHICS: Enforce HTTPS
     options.SaveToken = true;
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var rawToken = context.HttpContext.Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
+            if (string.IsNullOrWhiteSpace(rawToken))
+                return;
+
+            try
+            {
+                var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(rawToken));
+                var sb = new StringBuilder(bytes.Length * 2);
+                foreach (var b in bytes)
+                    sb.Append(b.ToString("x2"));
+                var tokenHash = sb.ToString();
+
+                var factory = context.HttpContext.RequestServices.GetRequiredService<DatabaseConnectionFactory>();
+                using var connection = factory.CreatePrimaryConnection();
+
+                var isRevoked = await connection.QueryFirstOrDefaultAsync<int>(
+                    "SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.SecAuthSession WHERE TokenHash = @TokenHash AND IsLoggedOut = 1) THEN 1 ELSE 0 END",
+                    new { TokenHash = tokenHash }) == 1;
+
+                if (isRevoked)
+                    context.Fail("Token has been logged out");
+            }
+            catch
+            {
+                // Ignore revocation check failures and fall back to standard JWT validation.
+            }
+        }
+    };
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
@@ -204,15 +238,13 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IThirdPartyService, ThirdPartyService>();
 
-// Register Appointment Scheduling (SP-based legacy parity)
-builder.Services.AddScoped<IAppointmentSchedulingRepository>(provider =>
+// Register Security Repository (uses primary database - UEMedical_For_R&D)
+builder.Services.AddScoped<ISecurityRepository>(provider =>
 {
     var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
     var connection = factory.CreatePrimaryConnection();
-    return new Coherent.Infrastructure.Repositories.AppointmentSchedulingRepository(connection);
+    return new Coherent.Infrastructure.Repositories.SecurityRepository(connection);
 });
-
-builder.Services.AddScoped<IAppointmentSchedulingService, Coherent.Infrastructure.Services.AppointmentSchedulingService>();
 
 // Register Patient Repository
 builder.Services.AddScoped<IPatientRepository>(provider =>
@@ -237,6 +269,28 @@ builder.Services.AddScoped<IDoctorRepository>(provider =>
     var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
     var connection = factory.CreateSecondaryConnection();
     return new Coherent.Infrastructure.Repositories.DoctorRepository(connection);
+});
+
+// Register CRM Master Data Repositories (uses secondary database - CoherentMobApp)
+builder.Services.AddScoped<ICrmDoctorRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.CrmDoctorRepository(connection);
+});
+
+builder.Services.AddScoped<ICrmFacilityRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.CrmFacilityRepository(connection);
+});
+
+builder.Services.AddScoped<ICrmDoctorFacilityRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.CrmDoctorFacilityRepository(connection);
 });
 
 // Register Patient Health Repository (uses primary database - UEMedical_For_R&D)
@@ -289,7 +343,6 @@ app.UseRateLimiter();
 app.UseSerilogRequestLogging();
 
 // Custom middleware
-app.UseMiddleware<JwtMiddleware>();
 app.UseMiddleware<ThirdPartyAuthMiddleware>();
 
 // Authentication & Authorization

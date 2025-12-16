@@ -8,8 +8,7 @@ namespace Coherent.Core.Interfaces;
 public interface IAuthService
 {
     Task<AuthResult> LoginAsync(LoginRequest request, string ipAddress, string userAgent);
-    Task<AuthResult> RefreshTokenAsync(string refreshToken, string ipAddress, string userAgent);
-    Task<bool> LogoutAsync(Guid userId);
+    Task<(bool IsSuccess, bool AlreadyLoggedOut)> LogoutAsync(Guid userId, string token);
     Task<bool> ValidateTokenAsync(string token);
     Task<UserDto?> GetCurrentUserAsync(Guid userId);
 }

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Coherent.Core.DTOs;
 
 /// <summary>
@@ -41,6 +43,7 @@ public class AppointmentDto
     public string? MRNo { get; set; }
     public long DoctorId { get; set; }
     public string? DoctorName { get; set; }
+    public string? DoctorLicenseNo { get; set; }
     public string? Speciality { get; set; }
     public long SiteId { get; set; }
     public string? SiteName { get; set; }
@@ -48,9 +51,22 @@ public class AppointmentDto
     public DateTime? AppointmentDateTime { get; set; }
     public int Duration { get; set; }
     public string? Status { get; set; } // Scheduled, Rescheduled, Cancelled
+    [JsonIgnore]
     public string? Reason { get; set; }
+
+    [JsonIgnore]
     public string? Notes { get; set; }
     public DateTime? CreatedDate { get; set; }
+    public string? CreatedBy { get; set; }
+
+    [JsonIgnore]
+    public string? AppDateRaw { get; set; }
+
+    [JsonIgnore]
+    public string? AppDateTimeRaw { get; set; }
+
+    [JsonIgnore]
+    public string? CreatedDateRaw { get; set; }
 }
 
 /// <summary>
@@ -58,12 +74,35 @@ public class AppointmentDto
 /// </summary>
 public class BookAppointmentRequest
 {
-    public long DoctorId { get; set; }
-    public string? MRNO { get; set; }
-    public DateTime AppointmentDateTime { get; set; }
-    public string? Day { get; set; } // Monday, Tuesday, etc.
-    public string? Reason { get; set; }
-    public string? Notes { get; set; }
+    [JsonPropertyName("doctorID")]
+    public string? DoctorID { get; set; }
+
+    [JsonPropertyName("facilityID")]
+    public string? FacilityID { get; set; }
+
+    [JsonPropertyName("serviceID")]
+    public string? ServiceID { get; set; }
+
+    [JsonPropertyName("time")]
+    public string? Time { get; set; }
+
+    [JsonPropertyName("mrNo")]
+    public string? MRNo { get; set; }
+}
+
+public class CancelAppointmentRequest
+{
+    [JsonPropertyName("appBookingId")]
+    public long AppBookingId { get; set; }
+}
+
+public class MobileAppBookAppointmentRequest
+{
+    public string? DoctorID { get; set; }
+    public string? FacilityID { get; set; }
+    public string? ServiceID { get; set; }
+    public string? Time { get; set; }
+    public string? MRNo { get; set; }
 }
 
 /// <summary>
@@ -71,13 +110,26 @@ public class BookAppointmentRequest
 /// </summary>
 public class ModifyAppointmentRequest
 {
+    [JsonPropertyName("appId")]
     public long AppId { get; set; }
-    public long DoctorId { get; set; }
-    public string? MRNO { get; set; }
-    public DateTime? AppointmentDateTime { get; set; }
+
+    [JsonPropertyName("status")]
     public string? Status { get; set; } // rescheduled, cancel
-    public string? Reason { get; set; }
-    public string? Notes { get; set; }
+
+    [JsonPropertyName("doctorID")]
+    public string? DoctorID { get; set; }
+
+    [JsonPropertyName("facilityID")]
+    public string? FacilityID { get; set; }
+
+    [JsonPropertyName("serviceID")]
+    public string? ServiceID { get; set; }
+
+    [JsonPropertyName("time")]
+    public string? Time { get; set; }
+
+    [JsonPropertyName("mrNo")]
+    public string? MRNo { get; set; }
 }
 
 /// <summary>
