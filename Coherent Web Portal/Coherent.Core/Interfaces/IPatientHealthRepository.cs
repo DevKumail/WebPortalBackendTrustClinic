@@ -7,7 +7,7 @@ namespace Coherent.Core.Interfaces;
 /// </summary>
 public interface IPatientHealthRepository
 {
-    Task<VitalSignsDto?> GetVitalSignsByMRNOAsync(string mrNo);
+    Task<List<VitalSignsDto>> GetVitalSignsByMRNOAsync(string mrNo, int limit = 50);
     Task<List<MedicationDto>> GetMedicationsByMRNOAsync(string mrNo);
     Task<List<MedicationV2Dto>> GetMedicationsV2ByMRNOAsync(string mrNo);
     Task<List<AllergyDto>> GetAllergiesByMRNOAsync(string mrNo);

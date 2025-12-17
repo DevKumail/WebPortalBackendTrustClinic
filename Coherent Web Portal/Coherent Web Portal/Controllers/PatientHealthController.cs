@@ -30,9 +30,9 @@ public class PatientHealthController : ControllerBase
     /// Returns vital signs including BMI, weight, height, temperature
     /// </summary>
     [HttpGet("GetVitalSignsByMRNO")]
-    [ProducesResponseType(typeof(VitalSignsDto), 200)]
+    [ProducesResponseType(typeof(List<VitalSignsDto>), 200)]
     [ProducesResponseType(404)]
-    public async Task<IActionResult> GetVitalSignsByMRNO([FromQuery] string MRNO)
+    public async Task<IActionResult> GetVitalSignsByMRNO([FromQuery] string MRNO, [FromQuery] int limit = 50)
     {
         try
         {
@@ -41,9 +41,9 @@ public class PatientHealthController : ControllerBase
 
             _logger.LogInformation("Getting vital signs for MRNO: {MRNO}", MRNO);
 
-            var vitalSigns = await _patientHealthRepository.GetVitalSignsByMRNOAsync(MRNO);
+            var vitalSigns = await _patientHealthRepository.GetVitalSignsByMRNOAsync(MRNO, limit);
 
-            if (vitalSigns == null)
+            if (vitalSigns == null || vitalSigns.Count == 0)
             {
                 _logger.LogWarning("Vital signs not found for MRNO: {MRNO}", MRNO);
                 return NotFound(new { message = $"Vital signs not found for MRNO {MRNO}" });

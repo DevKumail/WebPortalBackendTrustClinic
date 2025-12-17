@@ -19,9 +19,39 @@ public class PatientHealthRepository : IPatientHealthRepository
         _connection = connection;
     }
 
-    public async Task<VitalSignsDto?> GetVitalSignsByMRNOAsync(string mrNo)
+    public async Task<List<VitalSignsDto>> GetVitalSignsByMRNOAsync(string mrNo, int limit = 50)
     {
-        // Get from RegPatient table - height and weight
+        var vitalsQuery = @"
+            SELECT TOP (@Limit)
+                MRNo AS MRNO,
+                Weight,
+                Height,
+                BMI,
+                Temperature,
+                BPSystolic,
+                BPDiastolic,
+                CONCAT(CAST(BPSystolic AS VARCHAR(10)), '/', CAST(BPDiastolic AS VARCHAR(10))) AS BloodPressure,
+                COALESCE(HR, PulseRate) AS HeartRate,
+                PulseRate,
+                RespirationRate,
+                SPO2,
+                EntryDate
+            FROM VitalSigns
+            WHERE MRNo = @MRNo
+            ORDER BY EntryDate DESC";
+
+        static decimal? ToNullableDecimal(object? value)
+        {
+            if (value == null || value is DBNull) return null;
+            return Convert.ToDecimal(value);
+        }
+
+        static int? ToNullableInt(object? value)
+        {
+            if (value == null || value is DBNull) return null;
+            return Convert.ToInt32(value);
+        }
+
         var patientQuery = @"
             SELECT 
                 MRNo AS MRNO,
@@ -30,52 +60,82 @@ public class PatientHealthRepository : IPatientHealthRepository
             FROM RegPatient
             WHERE MRNo = @MRNo";
 
-        var patient = await _connection.QueryFirstOrDefaultAsync<VitalSignsDto>(patientQuery, new { MRNo = mrNo });
-
-        if (patient != null)
+        VitalSignsDto? patient = null;
+        try
         {
-            // Calculate BMI if height and weight exist
-            if (patient.Height.HasValue && patient.Weight.HasValue && patient.Height.Value > 0)
+            patient = await _connection.QueryFirstOrDefaultAsync<VitalSignsDto>(patientQuery, new { MRNo = mrNo });
+        }
+        catch
+        {
+        }
+
+        if (limit <= 0)
+            limit = 50;
+
+        IEnumerable<dynamic> rows;
+        try
+        {
+            rows = await _connection.QueryAsync<dynamic>(vitalsQuery, new { MRNo = mrNo, Limit = limit });
+        }
+        catch
+        {
+            rows = Array.Empty<dynamic>();
+        }
+
+        var results = new List<VitalSignsDto>();
+        foreach (var row in rows)
+        {
+            var dto = new VitalSignsDto
             {
-                // BMI = weight(kg) / (height(m))^2
-                // Convert height from cm to m
+                MRNO = row.MRNO,
+                Weight = ToNullableDecimal(row.Weight),
+                Height = ToNullableDecimal(row.Height),
+                BMI = ToNullableDecimal(row.BMI),
+                Temperature = ToNullableDecimal(row.Temperature),
+                BPSystolic = ToNullableInt(row.BPSystolic),
+                BPDiastolic = ToNullableInt(row.BPDiastolic),
+                BloodPressure = row.BloodPressure,
+                HeartRate = ToNullableInt(row.HeartRate),
+                PulseRate = ToNullableInt(row.PulseRate),
+                RespirationRate = ToNullableInt(row.RespirationRate),
+                SPO2 = ToNullableInt(row.SPO2),
+                RecordedDate = row.EntryDate != null ? DateStringConversion.StringToDate(row.EntryDate.ToString()) : null
+            };
+
+            if (!dto.Weight.HasValue && patient?.Weight.HasValue == true)
+                dto.Weight = patient.Weight;
+
+            if (!dto.Height.HasValue && patient?.Height.HasValue == true)
+                dto.Height = patient.Height;
+
+            if (!dto.RecordedDate.HasValue)
+                dto.RecordedDate = DateTime.Now;
+
+            if ((!dto.BMI.HasValue || dto.BMI.Value <= 0)
+                && dto.Height.HasValue && dto.Weight.HasValue && dto.Height.Value > 0)
+            {
+                decimal heightInMeters = dto.Height.Value / 100;
+                dto.BMI = Math.Round(dto.Weight.Value / (heightInMeters * heightInMeters), 2);
+            }
+
+            results.Add(dto);
+        }
+
+        if (results.Count == 0 && patient != null)
+        {
+            patient.RecordedDate ??= DateTime.Now;
+
+            if ((!patient.BMI.HasValue || patient.BMI.Value <= 0)
+                && patient.Height.HasValue && patient.Weight.HasValue && patient.Height.Value > 0)
+            {
                 decimal heightInMeters = patient.Height.Value / 100;
                 patient.BMI = Math.Round(patient.Weight.Value / (heightInMeters * heightInMeters), 2);
             }
 
-            patient.RecordedDate = DateTime.Now;
-
-            // Try to get additional vital signs from ClinicVisits or similar table if exists
-            // This is a placeholder - adjust based on actual table structure
-            var vitalsQuery = @"
-                SELECT TOP 1
-                    Temperature,
-                    BloodPressure,
-                    HeartRate,
-                    VisitDate AS RecordedDate
-                FROM PatientVitalSigns
-                WHERE MRNo = @MRNo
-                ORDER BY VisitDate DESC";
-
-            try
-            {
-                var vitals = await _connection.QueryFirstOrDefaultAsync<dynamic>(vitalsQuery, new { MRNo = mrNo });
-                if (vitals != null)
-                {
-                    patient.Temperature = vitals.Temperature;
-                    patient.BloodPressure = vitals.BloodPressure;
-                    patient.HeartRate = vitals.HeartRate;
-                    if (vitals.RecordedDate != null)
-                        patient.RecordedDate = DateStringConversion.StringToDate(vitals.RecordedDate.ToString());
-                }
-            }
-            catch
-            {
-                // Table might not exist, ignore
-            }
+            results.Add(patient);
         }
 
-        return patient;
+        return results;
     }
 
     public async Task<List<MedicationDto>> GetMedicationsByMRNOAsync(string mrNo)

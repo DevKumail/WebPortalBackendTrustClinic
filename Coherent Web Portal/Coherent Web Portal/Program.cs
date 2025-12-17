@@ -2,6 +2,7 @@ using Coherent.Core.Interfaces;
 using Coherent.Infrastructure.Data;
 using Coherent.Infrastructure.Middleware;
 using Coherent.Infrastructure.Services;
+using Coherent.Web.Portal.Hubs;
 using Dapper;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -25,6 +26,8 @@ builder.Host.UseSerilog();
 // Add services to the container
 builder.Services.AddControllers();
 
+builder.Services.AddSignalR();
+
 // Add API Versioning
 builder.Services.AddApiVersioning(options =>
 {
@@ -41,6 +44,8 @@ builder.Services.AddApiVersioning(options =>
     options.GroupNameFormat = "'v'VVV";
     options.SubstituteApiVersionInUrl = true;
 });
+
+builder.Services.AddHttpClient("MobileBackend");
 
 builder.Services.AddEndpointsApiExplorer();
 
@@ -152,6 +157,16 @@ builder.Services.AddAuthentication(options =>
     options.SaveToken = true;
     options.Events = new JwtBearerEvents
     {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"].FirstOrDefault();
+            var path = context.HttpContext.Request.Path;
+
+            if (!string.IsNullOrWhiteSpace(accessToken) && path.StartsWithSegments("/hubs/crm-chat"))
+                context.Token = accessToken;
+
+            return Task.CompletedTask;
+        },
         OnTokenValidated = async context =>
         {
             var rawToken = context.HttpContext.Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
@@ -237,6 +252,23 @@ builder.Services.AddScoped<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IThirdPartyService, ThirdPartyService>();
+
+// Register Chat Repositories
+builder.Services.AddScoped<IChatRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.ChatRepository(connection);
+});
+
+builder.Services.AddScoped<IChatWebhookOutboxRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreatePrimaryConnection();
+    return new Coherent.Infrastructure.Repositories.ChatWebhookOutboxRepository(connection);
+});
+
+builder.Services.AddHostedService<ChatWebhookBackgroundService>();
 
 // Register Security Repository (uses primary database - UEMedical_For_R&D)
 builder.Services.AddScoped<ISecurityRepository>(provider =>
@@ -354,6 +386,8 @@ app.MapHealthChecks("/health");
 
 // Controllers
 app.MapControllers();
+
+app.MapHub<CrmChatHub>("/hubs/crm-chat");
 
 try
 {

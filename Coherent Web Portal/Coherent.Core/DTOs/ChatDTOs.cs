@@ -1,0 +1,159 @@
+using System.Text.Json.Serialization;
+
+namespace Coherent.Core.DTOs;
+
+public class ChatThreadGetOrCreateRequest
+{
+    [JsonPropertyName("patientMrNo")]
+    public string PatientMrNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("doctorLicenseNo")]
+    public string DoctorLicenseNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("sourceSystem")]
+    public string? SourceSystem { get; set; }
+}
+
+public class ChatThreadGetOrCreateResponse
+{
+    [JsonPropertyName("crmThreadId")]
+    public string CrmThreadId { get; set; } = string.Empty;
+
+    [JsonPropertyName("patientMrNo")]
+    public string PatientMrNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("doctorLicenseNo")]
+    public string DoctorLicenseNo { get; set; } = string.Empty;
+}
+
+public class ChatSendMessageRequest
+{
+    [JsonPropertyName("crmThreadId")]
+    public string CrmThreadId { get; set; } = string.Empty;
+
+    [JsonPropertyName("senderType")]
+    public string SenderType { get; set; } = string.Empty;
+
+    [JsonPropertyName("senderMrNo")]
+    public string? SenderMrNo { get; set; }
+
+    [JsonPropertyName("senderDoctorLicenseNo")]
+    public string? SenderDoctorLicenseNo { get; set; }
+
+    [JsonPropertyName("receiverType")]
+    public string ReceiverType { get; set; } = string.Empty;
+
+    [JsonPropertyName("receiverMrNo")]
+    public string? ReceiverMrNo { get; set; }
+
+    [JsonPropertyName("receiverDoctorLicenseNo")]
+    public string? ReceiverDoctorLicenseNo { get; set; }
+
+    [JsonPropertyName("messageType")]
+    public string MessageType { get; set; } = "Text";
+
+    [JsonPropertyName("content")]
+    public string? Content { get; set; }
+
+    [JsonPropertyName("fileUrl")]
+    public string? FileUrl { get; set; }
+
+    [JsonPropertyName("fileName")]
+    public string? FileName { get; set; }
+
+    [JsonPropertyName("fileSize")]
+    public long? FileSize { get; set; }
+
+    [JsonPropertyName("clientMessageId")]
+    public Guid ClientMessageId { get; set; }
+
+    [JsonPropertyName("sentAt")]
+    public DateTime SentAt { get; set; }
+}
+
+public class ChatSendMessageResponse
+{
+    [JsonPropertyName("crmMessageId")]
+    public string CrmMessageId { get; set; } = string.Empty;
+
+    [JsonPropertyName("crmThreadId")]
+    public string CrmThreadId { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "Accepted";
+
+    [JsonPropertyName("serverReceivedAt")]
+    public DateTime ServerReceivedAt { get; set; }
+}
+
+public class ChatDoctorMessageCreatedWebhook
+{
+    [JsonPropertyName("eventType")]
+    public string EventType { get; set; } = "DoctorMessageCreated";
+
+    [JsonPropertyName("crmThreadId")]
+    public string CrmThreadId { get; set; } = string.Empty;
+
+    [JsonPropertyName("crmMessageId")]
+    public string CrmMessageId { get; set; } = string.Empty;
+
+    [JsonPropertyName("doctorLicenseNo")]
+    public string DoctorLicenseNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("patientMrNo")]
+    public string PatientMrNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("messageType")]
+    public string MessageType { get; set; } = "Text";
+
+    [JsonPropertyName("content")]
+    public string? Content { get; set; }
+
+    [JsonPropertyName("fileUrl")]
+    public string? FileUrl { get; set; }
+
+    [JsonPropertyName("fileName")]
+    public string? FileName { get; set; }
+
+    [JsonPropertyName("fileSize")]
+    public long? FileSize { get; set; }
+
+    [JsonPropertyName("sentAt")]
+    public DateTime SentAt { get; set; }
+}
+
+public class ChatMessageUpdateResponse
+{
+    [JsonPropertyName("eventType")]
+    public string EventType { get; set; } = "DoctorMessageCreated";
+
+    [JsonPropertyName("crmThreadId")]
+    public string CrmThreadId { get; set; } = string.Empty;
+
+    [JsonPropertyName("crmMessageId")]
+    public string CrmMessageId { get; set; } = string.Empty;
+
+    [JsonPropertyName("doctorLicenseNo")]
+    public string DoctorLicenseNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("patientMrNo")]
+    public string PatientMrNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("messageType")]
+    public string MessageType { get; set; } = "Text";
+
+    [JsonPropertyName("content")]
+    public string? Content { get; set; }
+
+    [JsonPropertyName("fileUrl")]
+    public string? FileUrl { get; set; }
+
+    [JsonPropertyName("fileName")]
+    public string? FileName { get; set; }
+
+    [JsonPropertyName("fileSize")]
+    public long? FileSize { get; set; }
+
+    [JsonPropertyName("sentAt")]
+    public DateTime SentAt { get; set; }
+}

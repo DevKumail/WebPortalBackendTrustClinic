@@ -179,8 +179,13 @@ public class VitalSignsDto
     public decimal? Height { get; set; } // in cm
     public decimal? BMI { get; set; }
     public decimal? Temperature { get; set; } // in Celsius
+    public int? BPSystolic { get; set; }
+    public int? BPDiastolic { get; set; }
     public string? BloodPressure { get; set; } // e.g., "120/80"
     public int? HeartRate { get; set; } // beats per minute
+    public int? PulseRate { get; set; }
+    public int? RespirationRate { get; set; }
+    public int? SPO2 { get; set; }
     public DateTime? RecordedDate { get; set; }
 }
 
