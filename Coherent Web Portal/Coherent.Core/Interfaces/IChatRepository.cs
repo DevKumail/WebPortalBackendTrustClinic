@@ -7,4 +7,8 @@ public interface IChatRepository
     Task<ChatThreadGetOrCreateResponse> GetOrCreateThreadAsync(ChatThreadGetOrCreateRequest request);
     Task<(ChatSendMessageResponse Response, bool IsDoctorToPatient)> SendMessageAsync(ChatSendMessageRequest request);
     Task<List<ChatMessageUpdateResponse>> GetDoctorToPatientUpdatesAsync(DateTime sinceUtc, int limit = 100);
+
+    Task<ChatDoctorUnreadSummaryResponse> GetDoctorUnreadSummaryAsync(string doctorLicenseNo, int limit = 50);
+    Task<List<ChatThreadMessageDto>> GetThreadMessagesAsync(string crmThreadId, int take = 50);
+    Task<ChatMarkReadResponse> MarkThreadAsReadAsync(string crmThreadId, string doctorLicenseNo);
 }

@@ -2,6 +2,7 @@ using Coherent.Core.DTOs;
 using Coherent.Core.Interfaces;
 using Dapper;
 using System.Data;
+using System.Linq;
 
 namespace Coherent.Infrastructure.Repositories;
 
@@ -199,6 +200,154 @@ public class ChatRepository : IChatRepository
         }
 
         return result;
+    }
+
+    public async Task<ChatDoctorUnreadSummaryResponse> GetDoctorUnreadSummaryAsync(string doctorLicenseNo, int limit = 50)
+    {
+        if (string.IsNullOrWhiteSpace(doctorLicenseNo))
+            throw new ArgumentException("doctorLicenseNo is required", nameof(doctorLicenseNo));
+
+        if (limit <= 0)
+            limit = 50;
+
+        var sql = @"
+            SELECT TOP (@Limit)
+                c.ConversationId,
+                u.MRNO AS PatientMrNo,
+                rp.FullName AS PatientName,
+                SUM(CASE WHEN m.IsRead = 0 THEN 1 ELSE 0 END) AS UnreadCount,
+                MAX(m.SentAt) AS LastMessageAt,
+                MAX(COALESCE(NULLIF(m.Content, ''), NULLIF(m.FileName, ''), m.MessageType)) AS LastMessagePreview
+            FROM dbo.MConversations c
+            INNER JOIN dbo.MConversationParticipants pDoctor ON pDoctor.ConversationId = c.ConversationId AND pDoctor.UserType = 'Doctor'
+            INNER JOIN dbo.MDoctors d ON d.DId = pDoctor.UserId
+            INNER JOIN dbo.MConversationParticipants pPatient ON pPatient.ConversationId = c.ConversationId AND pPatient.UserType = 'Patient'
+            INNER JOIN dbo.Users u ON u.Id = pPatient.UserId
+            LEFT JOIN dbo.Users rp ON rp.MRNO = u.MRNO
+            INNER JOIN dbo.MChatMessages m ON m.ConversationId = c.ConversationId
+            WHERE d.LicenceNo = @DoctorLicenseNo
+              AND m.SenderType = 'Patient'
+              AND m.IsDeleted = 0
+            GROUP BY
+                c.ConversationId,
+                u.MRNO,
+                rp.FullName
+            HAVING SUM(CASE WHEN m.IsRead = 0 THEN 1 ELSE 0 END) > 0
+            ORDER BY MAX(m.SentAt) DESC";
+
+        var rows = await _connection.QueryAsync<dynamic>(sql, new { DoctorLicenseNo = doctorLicenseNo, Limit = limit });
+
+        var response = new ChatDoctorUnreadSummaryResponse
+        {
+            DoctorLicenseNo = doctorLicenseNo
+        };
+
+        foreach (var row in rows)
+        {
+            var conversationId = (int)row.ConversationId;
+            var patientName = (row.PatientName as string) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(patientName))
+                patientName = (string)row.PatientMrNo;
+
+            var item = new ChatUnreadThreadItem
+            {
+                CrmThreadId = $"CRM-TH-{conversationId}",
+                PatientMrNo = row.PatientMrNo,
+                PatientName = patientName,
+                UnreadCount = (int)row.UnreadCount,
+                LastMessageAt = row.LastMessageAt,
+                LastMessagePreview = row.LastMessagePreview
+            };
+
+            response.Threads.Add(item);
+            response.TotalUnread += item.UnreadCount;
+        }
+
+        return response;
+    }
+
+    public async Task<List<ChatThreadMessageDto>> GetThreadMessagesAsync(string crmThreadId, int take = 50)
+    {
+        if (take <= 0)
+            take = 50;
+
+        if (!TryParseConversationId(crmThreadId, out var conversationId))
+            throw new ArgumentException("Invalid crmThreadId", nameof(crmThreadId));
+
+        var sql = @"
+            SELECT TOP (@Take)
+                m.MessageId,
+                m.SenderType,
+                m.MessageType,
+                m.Content,
+                m.FileUrl,
+                m.FileName,
+                m.FileSize,
+                m.SentAt
+            FROM dbo.MChatMessages m
+            WHERE m.ConversationId = @ConversationId
+              AND m.IsDeleted = 0
+            ORDER BY m.SentAt DESC, m.MessageId DESC";
+
+        var rows = await _connection.QueryAsync<dynamic>(sql, new { ConversationId = conversationId, Take = take });
+
+        // Return ascending for UI rendering
+        return rows
+            .Select(r => new ChatThreadMessageDto
+            {
+                CrmMessageId = $"CRM-MSG-{(int)r.MessageId}",
+                CrmThreadId = $"CRM-TH-{conversationId}",
+                SenderType = r.SenderType,
+                MessageType = r.MessageType,
+                Content = r.Content,
+                FileUrl = r.FileUrl,
+                FileName = r.FileName,
+                FileSize = r.FileSize,
+                SentAt = r.SentAt
+            })
+            .OrderBy(x => x.SentAt)
+            .ThenBy(x => int.Parse(x.CrmMessageId.Substring("CRM-MSG-".Length)))
+            .ToList();
+    }
+
+    public async Task<ChatMarkReadResponse> MarkThreadAsReadAsync(string crmThreadId, string doctorLicenseNo)
+    {
+        if (string.IsNullOrWhiteSpace(doctorLicenseNo))
+            throw new ArgumentException("doctorLicenseNo is required", nameof(doctorLicenseNo));
+
+        if (!TryParseConversationId(crmThreadId, out var conversationId))
+            throw new ArgumentException("Invalid crmThreadId", nameof(crmThreadId));
+
+        // Ensure this doctor belongs to this conversation
+        var isParticipant = await _connection.QueryFirstOrDefaultAsync<int>(@"
+            SELECT CASE WHEN EXISTS (
+                SELECT 1
+                FROM dbo.MConversationParticipants p
+                INNER JOIN dbo.MDoctors d ON d.DId = p.UserId
+                WHERE p.ConversationId = @ConversationId
+                  AND p.UserType = 'Doctor'
+                  AND d.LicenceNo = @DoctorLicenseNo
+            ) THEN 1 ELSE 0 END",
+            new { ConversationId = conversationId, DoctorLicenseNo = doctorLicenseNo });
+
+        if (isParticipant != 1)
+            throw new InvalidOperationException("Doctor is not a participant of this conversation");
+
+        var affected = await _connection.ExecuteAsync(@"
+            UPDATE dbo.MChatMessages
+            SET IsRead = 1
+            WHERE ConversationId = @ConversationId
+              AND SenderType = 'Patient'
+              AND IsRead = 0
+              AND IsDeleted = 0",
+            new { ConversationId = conversationId });
+
+        return new ChatMarkReadResponse
+        {
+            CrmThreadId = $"CRM-TH-{conversationId}",
+            MarkedReadCount = affected,
+            ServerProcessedAt = DateTime.UtcNow
+        };
     }
 
     private async Task<int> ResolveUserIdAsync(string userType, string? mrNo, string? licenceNo)

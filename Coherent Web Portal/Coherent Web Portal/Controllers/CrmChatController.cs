@@ -116,4 +116,28 @@ public class CrmChatController : ControllerBase
 
         return Ok(response);
     }
+
+    [HttpGet("unread-summary")]
+    [ProducesResponseType(typeof(ChatDoctorUnreadSummaryResponse), 200)]
+    public async Task<IActionResult> GetUnreadSummary([FromQuery] string doctorLicenseNo, [FromQuery] int limit = 50)
+    {
+        var result = await _chatRepository.GetDoctorUnreadSummaryAsync(doctorLicenseNo, limit);
+        return Ok(result);
+    }
+
+    [HttpGet("threads/{crmThreadId}/messages")]
+    [ProducesResponseType(typeof(List<ChatThreadMessageDto>), 200)]
+    public async Task<IActionResult> GetThreadMessages([FromRoute] string crmThreadId, [FromQuery] int take = 50)
+    {
+        var messages = await _chatRepository.GetThreadMessagesAsync(crmThreadId, take);
+        return Ok(messages);
+    }
+
+    [HttpPost("threads/{crmThreadId}/mark-read")]
+    [ProducesResponseType(typeof(ChatMarkReadResponse), 200)]
+    public async Task<IActionResult> MarkThreadRead([FromRoute] string crmThreadId, [FromQuery] string doctorLicenseNo)
+    {
+        var result = await _chatRepository.MarkThreadAsReadAsync(crmThreadId, doctorLicenseNo);
+        return Ok(result);
+    }
 }

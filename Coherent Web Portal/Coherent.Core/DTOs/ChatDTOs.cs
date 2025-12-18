@@ -71,6 +71,81 @@ public class ChatSendMessageRequest
     public DateTime SentAt { get; set; }
 }
 
+public class ChatUnreadThreadItem
+{
+    [JsonPropertyName("crmThreadId")]
+    public string CrmThreadId { get; set; } = string.Empty;
+
+    [JsonPropertyName("patientMrNo")]
+    public string PatientMrNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("patientName")]
+    public string PatientName { get; set; } = string.Empty;
+
+    [JsonPropertyName("unreadCount")]
+    public int UnreadCount { get; set; }
+
+    [JsonPropertyName("lastMessageAt")]
+    public DateTime LastMessageAt { get; set; }
+
+    [JsonPropertyName("lastMessagePreview")]
+    public string LastMessagePreview { get; set; } = string.Empty;
+}
+
+public class ChatDoctorUnreadSummaryResponse
+{
+    [JsonPropertyName("doctorLicenseNo")]
+    public string DoctorLicenseNo { get; set; } = string.Empty;
+
+    [JsonPropertyName("totalUnread")]
+    public int TotalUnread { get; set; }
+
+    [JsonPropertyName("threads")]
+    public List<ChatUnreadThreadItem> Threads { get; set; } = new();
+}
+
+public class ChatThreadMessageDto
+{
+    [JsonPropertyName("crmMessageId")]
+    public string CrmMessageId { get; set; } = string.Empty;
+
+    [JsonPropertyName("crmThreadId")]
+    public string CrmThreadId { get; set; } = string.Empty;
+
+    [JsonPropertyName("senderType")]
+    public string SenderType { get; set; } = string.Empty;
+
+    [JsonPropertyName("messageType")]
+    public string MessageType { get; set; } = "Text";
+
+    [JsonPropertyName("content")]
+    public string? Content { get; set; }
+
+    [JsonPropertyName("fileUrl")]
+    public string? FileUrl { get; set; }
+
+    [JsonPropertyName("fileName")]
+    public string? FileName { get; set; }
+
+    [JsonPropertyName("fileSize")]
+    public long? FileSize { get; set; }
+
+    [JsonPropertyName("sentAt")]
+    public DateTime SentAt { get; set; }
+}
+
+public class ChatMarkReadResponse
+{
+    [JsonPropertyName("crmThreadId")]
+    public string CrmThreadId { get; set; } = string.Empty;
+
+    [JsonPropertyName("markedReadCount")]
+    public int MarkedReadCount { get; set; }
+
+    [JsonPropertyName("serverProcessedAt")]
+    public DateTime ServerProcessedAt { get; set; }
+}
+
 public class ChatSendMessageResponse
 {
     [JsonPropertyName("crmMessageId")]
