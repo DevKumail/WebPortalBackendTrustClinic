@@ -318,6 +318,13 @@ builder.Services.AddScoped<ICrmFacilityRepository>(provider =>
     return new Coherent.Infrastructure.Repositories.CrmFacilityRepository(connection);
 });
 
+ builder.Services.AddScoped<ICrmSpecialityRepository>(provider =>
+ {
+     var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+     var connection = factory.CreateSecondaryConnection();
+     return new Coherent.Infrastructure.Repositories.CrmSpecialityRepository(connection);
+ });
+
 builder.Services.AddScoped<ICrmDoctorFacilityRepository>(provider =>
 {
     var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
@@ -353,6 +360,8 @@ var app = builder.Build();
 
 // ADHICS Compliance: Enforce HTTPS
 app.UseHttpsRedirection();
+
+app.UseStaticFiles();
 
 // Security Headers (ADHICS compliance)
 app.Use(async (context, next) =>

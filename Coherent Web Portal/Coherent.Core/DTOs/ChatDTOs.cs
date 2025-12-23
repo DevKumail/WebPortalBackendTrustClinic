@@ -71,6 +71,63 @@ public class ChatSendMessageRequest
     public DateTime SentAt { get; set; }
 }
 
+public class ChatConversationCounterpartDto
+{
+    [JsonPropertyName("userType")]
+    public string UserType { get; set; } = string.Empty;
+
+    [JsonPropertyName("doctorLicenseNo")]
+    public string? DoctorLicenseNo { get; set; }
+
+    [JsonPropertyName("doctorName")]
+    public string? DoctorName { get; set; }
+
+    [JsonPropertyName("doctorTitle")]
+    public string? DoctorTitle { get; set; }
+
+    [JsonPropertyName("doctorPhotoName")]
+    public string? DoctorPhotoName { get; set; }
+
+    [JsonPropertyName("patientMrNo")]
+    public string? PatientMrNo { get; set; }
+
+    [JsonPropertyName("patientName")]
+    public string? PatientName { get; set; }
+}
+
+public class ChatConversationListItemDto
+{
+    [JsonPropertyName("crmThreadId")]
+    public string CrmThreadId { get; set; } = string.Empty;
+
+    [JsonPropertyName("lastMessageAt")]
+    public DateTime? LastMessageAt { get; set; }
+
+    [JsonPropertyName("lastMessagePreview")]
+    public string? LastMessagePreview { get; set; }
+
+    [JsonPropertyName("unreadCount")]
+    public int UnreadCount { get; set; }
+
+    [JsonPropertyName("counterpart")]
+    public ChatConversationCounterpartDto Counterpart { get; set; } = new();
+}
+
+public class ChatConversationListResponse
+{
+    [JsonPropertyName("doctorLicenseNo")]
+    public string? DoctorLicenseNo { get; set; }
+
+    [JsonPropertyName("patientMrNo")]
+    public string? PatientMrNo { get; set; }
+
+    [JsonPropertyName("serverTimeUtc")]
+    public DateTime ServerTimeUtc { get; set; }
+
+    [JsonPropertyName("conversations")]
+    public List<ChatConversationListItemDto> Conversations { get; set; } = new();
+}
+
 public class ChatUnreadThreadItem
 {
     [JsonPropertyName("crmThreadId")]

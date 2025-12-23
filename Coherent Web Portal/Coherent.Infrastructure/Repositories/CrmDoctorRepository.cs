@@ -15,13 +15,37 @@ public class CrmDoctorRepository : ICrmDoctorRepository
         _connection = connection;
     }
 
-    public async Task<List<MDoctor>> GetAllAsync(bool includeInactive)
+    public async Task<List<CrmDoctorListItemDto>> GetAllAsync(bool includeInactive)
     {
-        var sql = includeInactive
-            ? "SELECT * FROM MDoctors ORDER BY DoctorName"
-            : "SELECT * FROM MDoctors WHERE Active = 1 ORDER BY DoctorName";
+        var sql = @"
+SELECT
+    d.DId,
+    d.DoctorName,
+    d.ArDoctorName,
+    d.Title,
+    d.ArTitle,
+    d.SPId,
+    s.SpecilityName AS SpecilityName,
+    s.ArSpecilityName AS ArSpecilityName,
+    d.YearsOfExperience,
+    d.Nationality,
+    d.ArNationality,
+    d.Languages,
+    d.ArLanguages,
+    d.DoctorPhotoName,
+    d.LicenceNo,
+    d.Active,
+    d.Gender
+FROM MDoctors d
+LEFT JOIN MSpecility s ON d.SPId = s.SPId
+WHERE (@IncludeInactive = 1 OR d.Active = 1)
+ORDER BY d.DoctorName";
 
-        var rows = await _connection.QueryAsync<MDoctor>(sql);
+        var rows = await _connection.QueryAsync<CrmDoctorListItemDto>(sql, new
+        {
+            IncludeInactive = includeInactive ? 1 : 0
+        });
+
         return rows.ToList();
     }
 
@@ -84,5 +108,21 @@ SELECT CAST(SCOPE_IDENTITY() as int);";
 
         var newId = await _connection.QuerySingleAsync<int>(insertSql, request);
         return newId;
+    }
+
+    public async Task<bool> UpdateDoctorPhotoAsync(int doctorId, string doctorPhotoName)
+    {
+        var sql = @"
+UPDATE MDoctors
+SET DoctorPhotoName = @DoctorPhotoName
+WHERE DId = @DoctorId";
+
+        var rows = await _connection.ExecuteAsync(sql, new
+        {
+            DoctorId = doctorId,
+            DoctorPhotoName = doctorPhotoName
+        });
+
+        return rows > 0;
     }
 }

@@ -119,4 +119,24 @@ public class ChatController : ControllerBase
         var updates = await _chatRepository.GetDoctorToPatientUpdatesAsync(since.ToUniversalTime(), limit);
         return Ok(updates);
     }
+
+    [AllowAnonymous]
+    [HttpGet("conversations")]
+    [ProducesResponseType(typeof(ChatConversationListResponse), 200)]
+    public async Task<IActionResult> GetConversations([FromQuery] string? doctorLicenseNo, [FromQuery] string? patientMrNo, [FromQuery] int limit = 50)
+    {
+        var result = await _chatRepository.GetConversationListAsync(doctorLicenseNo, patientMrNo, limit);
+
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        foreach (var item in result.Conversations)
+        {
+            var photo = item.Counterpart.DoctorPhotoName;
+            if (!string.IsNullOrWhiteSpace(photo) && !Uri.TryCreate(photo, UriKind.Absolute, out _))
+            {
+                item.Counterpart.DoctorPhotoName = $"{baseUrl}/images/doctors/{photo.TrimStart('/')}";
+            }
+        }
+
+        return Ok(result);
+    }
 }

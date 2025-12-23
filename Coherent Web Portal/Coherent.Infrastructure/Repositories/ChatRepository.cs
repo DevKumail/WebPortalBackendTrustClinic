@@ -202,6 +202,144 @@ public class ChatRepository : IChatRepository
         return result;
     }
 
+    public async Task<ChatConversationListResponse> GetConversationListAsync(string? doctorLicenseNo, string? patientMrNo, int limit = 50)
+    {
+        if (limit <= 0)
+            limit = 50;
+
+        limit = Math.Min(limit, 200);
+
+        var hasDoctor = !string.IsNullOrWhiteSpace(doctorLicenseNo);
+        var hasPatient = !string.IsNullOrWhiteSpace(patientMrNo);
+
+        if (hasDoctor == hasPatient)
+            throw new ArgumentException("Either doctorLicenseNo or patientMrNo must be provided (but not both)");
+
+        if (hasDoctor)
+        {
+            var sql = @"
+SELECT TOP (@Limit)
+    c.ConversationId,
+    c.LastMessageAt,
+    c.LastMessage AS LastMessagePreview,
+    pPatient.UserId AS PatientUserId,
+    u.MRNO AS PatientMrNo,
+    COALESCE(NULLIF(u.FullName, ''), NULLIF(u.MRNO, ''), CAST(u.Id AS NVARCHAR(50))) AS PatientName,
+    (
+        SELECT COUNT(1)
+        FROM dbo.MChatMessages m
+        WHERE m.ConversationId = c.ConversationId
+          AND m.SenderType = 'Patient'
+          AND m.IsRead = 0
+          AND m.IsDeleted = 0
+    ) AS UnreadCount
+FROM dbo.MConversations c
+INNER JOIN dbo.MConversationParticipants pDoctor
+    ON pDoctor.ConversationId = c.ConversationId
+   AND pDoctor.UserType = 'Doctor'
+INNER JOIN dbo.MDoctors d
+    ON d.DId = pDoctor.UserId
+INNER JOIN dbo.MConversationParticipants pPatient
+    ON pPatient.ConversationId = c.ConversationId
+   AND pPatient.UserType = 'Patient'
+INNER JOIN dbo.Users u
+    ON u.Id = pPatient.UserId
+WHERE d.LicenceNo = @DoctorLicenseNo
+ORDER BY COALESCE(c.LastMessageAt, '1900-01-01') DESC, c.ConversationId DESC;";
+
+            var rows = await _connection.QueryAsync<dynamic>(sql, new { DoctorLicenseNo = doctorLicenseNo, Limit = limit });
+
+            var response = new ChatConversationListResponse
+            {
+                DoctorLicenseNo = doctorLicenseNo,
+                ServerTimeUtc = DateTime.UtcNow
+            };
+
+            foreach (var row in rows)
+            {
+                var conversationId = (int)row.ConversationId;
+                response.Conversations.Add(new ChatConversationListItemDto
+                {
+                    CrmThreadId = $"CRM-TH-{conversationId}",
+                    LastMessageAt = row.LastMessageAt,
+                    LastMessagePreview = row.LastMessagePreview,
+                    UnreadCount = (int)(row.UnreadCount ?? 0),
+                    Counterpart = new ChatConversationCounterpartDto
+                    {
+                        UserType = "Patient",
+                        PatientMrNo = row.PatientMrNo,
+                        PatientName = row.PatientName
+                    }
+                });
+            }
+
+            return response;
+        }
+
+        {
+            var sql = @"
+SELECT TOP (@Limit)
+    c.ConversationId,
+    c.LastMessageAt,
+    c.LastMessage AS LastMessagePreview,
+    d.LicenceNo AS DoctorLicenseNo,
+    d.DoctorName,
+    d.Title,
+    d.DoctorPhotoName,
+    (
+        SELECT COUNT(1)
+        FROM dbo.MChatMessages m
+        WHERE m.ConversationId = c.ConversationId
+          AND m.SenderType = 'Doctor'
+          AND m.IsRead = 0
+          AND m.IsDeleted = 0
+    ) AS UnreadCount
+FROM dbo.MConversations c
+INNER JOIN dbo.MConversationParticipants pPatient
+    ON pPatient.ConversationId = c.ConversationId
+   AND pPatient.UserType = 'Patient'
+INNER JOIN dbo.Users u
+    ON u.Id = pPatient.UserId
+INNER JOIN dbo.MConversationParticipants pDoctor
+    ON pDoctor.ConversationId = c.ConversationId
+   AND pDoctor.UserType = 'Doctor'
+INNER JOIN dbo.MDoctors d
+    ON d.DId = pDoctor.UserId
+WHERE u.MRNO = @PatientMrNo
+ORDER BY COALESCE(c.LastMessageAt, '1900-01-01') DESC, c.ConversationId DESC;";
+
+            var rows = await _connection.QueryAsync<dynamic>(sql, new { PatientMrNo = patientMrNo, Limit = limit });
+
+            var response = new ChatConversationListResponse
+            {
+                PatientMrNo = patientMrNo,
+                ServerTimeUtc = DateTime.UtcNow
+            };
+
+            foreach (var row in rows)
+            {
+                var conversationId = (int)row.ConversationId;
+                response.Conversations.Add(new ChatConversationListItemDto
+                {
+                    CrmThreadId = $"CRM-TH-{conversationId}",
+                    LastMessageAt = row.LastMessageAt,
+                    LastMessagePreview = row.LastMessagePreview,
+                    UnreadCount = (int)(row.UnreadCount ?? 0),
+                    Counterpart = new ChatConversationCounterpartDto
+                    {
+                        UserType = "Doctor",
+                        DoctorLicenseNo = row.DoctorLicenseNo,
+                        DoctorName = row.DoctorName,
+                        DoctorTitle = row.Title,
+                        DoctorPhotoName = row.DoctorPhotoName
+                    }
+                });
+            }
+
+            return response;
+        }
+    }
+
     public async Task<ChatDoctorUnreadSummaryResponse> GetDoctorUnreadSummaryAsync(string doctorLicenseNo, int limit = 50)
     {
         if (string.IsNullOrWhiteSpace(doctorLicenseNo))

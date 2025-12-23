@@ -30,6 +30,27 @@ public class CrmDoctorUpsertRequest
     public string? Gender { get; set; }
 }
 
+public class CrmDoctorListItemDto
+{
+    public int DId { get; set; }
+    public string? DoctorName { get; set; }
+    public string? ArDoctorName { get; set; }
+    public string? Title { get; set; }
+    public string? ArTitle { get; set; }
+    public int? SPId { get; set; }
+    public string? SpecilityName { get; set; }
+    public string? ArSpecilityName { get; set; }
+    public string? YearsOfExperience { get; set; }
+    public string? Nationality { get; set; }
+    public string? ArNationality { get; set; }
+    public string? Languages { get; set; }
+    public string? ArLanguages { get; set; }
+    public string? DoctorPhotoName { get; set; }
+    public string? LicenceNo { get; set; }
+    public bool? Active { get; set; }
+    public string? Gender { get; set; }
+}
+
 public class CrmFacilityUpsertRequest
 {
     public int? FId { get; set; }
