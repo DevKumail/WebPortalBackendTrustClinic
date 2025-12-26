@@ -46,6 +46,14 @@ public class CrmDoctorListItemDto
     public string? Languages { get; set; }
     public string? ArLanguages { get; set; }
     public string? DoctorPhotoName { get; set; }
+    public string? About { get; set; }
+    public string? ArAbout { get; set; }
+    public string? Education { get; set; }
+    public string? ArEducation { get; set; }
+    public string? Experience { get; set; }
+    public string? ArExperience { get; set; }
+    public string? Expertise { get; set; }
+    public string? ArExpertise { get; set; }
     public string? LicenceNo { get; set; }
     public bool? Active { get; set; }
     public string? Gender { get; set; }

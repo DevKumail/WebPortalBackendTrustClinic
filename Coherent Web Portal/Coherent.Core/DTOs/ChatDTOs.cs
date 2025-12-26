@@ -97,6 +97,9 @@ public class ChatConversationCounterpartDto
 
 public class ChatConversationListItemDto
 {
+    [JsonPropertyName("conversationId")]
+    public int ConversationId { get; set; }
+
     [JsonPropertyName("crmThreadId")]
     public string CrmThreadId { get; set; } = string.Empty;
 

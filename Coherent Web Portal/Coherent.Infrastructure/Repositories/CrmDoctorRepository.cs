@@ -33,6 +33,14 @@ SELECT
     d.Languages,
     d.ArLanguages,
     d.DoctorPhotoName,
+    d.About,
+    d.ArAbout,
+    d.Education,
+    d.ArEducation,
+    d.Experience,
+    d.ArExperience,
+    d.Expertise,
+    d.ArExpertise,
     d.LicenceNo,
     d.Active,
     d.Gender
@@ -57,6 +65,10 @@ ORDER BY d.DoctorName";
 
     public async Task<int> UpsertAsync(CrmDoctorUpsertRequest request)
     {
+        try
+        {
+
+       
         if (request.DId.HasValue)
         {
             var updateSql = @"
@@ -108,6 +120,12 @@ SELECT CAST(SCOPE_IDENTITY() as int);";
 
         var newId = await _connection.QuerySingleAsync<int>(insertSql, request);
         return newId;
+        }
+        catch (Exception ex)
+        {
+
+            throw;
+        }
     }
 
     public async Task<bool> UpdateDoctorPhotoAsync(int doctorId, string doctorPhotoName)

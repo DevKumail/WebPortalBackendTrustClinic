@@ -260,6 +260,7 @@ ORDER BY COALESCE(c.LastMessageAt, '1900-01-01') DESC, c.ConversationId DESC;";
                 var conversationId = (int)row.ConversationId;
                 response.Conversations.Add(new ChatConversationListItemDto
                 {
+                    ConversationId = conversationId,
                     CrmThreadId = $"CRM-TH-{conversationId}",
                     LastMessageAt = row.LastMessageAt,
                     LastMessagePreview = row.LastMessagePreview,
@@ -321,6 +322,7 @@ ORDER BY COALESCE(c.LastMessageAt, '1900-01-01') DESC, c.ConversationId DESC;";
                 var conversationId = (int)row.ConversationId;
                 response.Conversations.Add(new ChatConversationListItemDto
                 {
+                    ConversationId = conversationId,
                     CrmThreadId = $"CRM-TH-{conversationId}",
                     LastMessageAt = row.LastMessageAt,
                     LastMessagePreview = row.LastMessagePreview,

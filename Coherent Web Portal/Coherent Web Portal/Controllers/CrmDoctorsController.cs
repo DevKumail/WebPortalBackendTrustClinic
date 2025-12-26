@@ -42,6 +42,14 @@ public class CrmDoctorsController : ControllerBase
         _logger = logger;
     }
 
+    private string? BuildDoctorPhotoUrl(string? doctorPhotoName)
+    {
+        if (string.IsNullOrWhiteSpace(doctorPhotoName))
+            return null;
+
+        return $"{Request.Scheme}://{Request.Host}/images/doctors/{doctorPhotoName}";
+    }
+
     [HttpGet]
     [Permission("Doctors.Read")]
     public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false)
@@ -58,7 +66,33 @@ public class CrmDoctorsController : ControllerBase
         if (row == null)
             return NotFound(new { message = $"Doctor with ID {doctorId} not found" });
 
-        return Ok(row);
+        return Ok(new
+        {
+            dId = row.DId,
+            doctorName = row.DoctorName,
+            arDoctorName = row.ArDoctorName,
+            title = row.Title,
+            arTitle = row.ArTitle,
+            spId = row.SPId,
+            yearsOfExperience = row.YearsOfExperience,
+            nationality = row.Nationality,
+            arNationality = row.ArNationality,
+            languages = row.Languages,
+            arLanguages = row.ArLanguages,
+            doctorPhotoName = row.DoctorPhotoName,
+            doctorPhotoUrl = BuildDoctorPhotoUrl(row.DoctorPhotoName),
+            about = row.About,
+            arAbout = row.ArAbout,
+            education = row.Education,
+            arEducation = row.ArEducation,
+            experience = row.Experience,
+            arExperience = row.ArExperience,
+            expertise = row.Expertise,
+            arExpertise = row.ArExpertise,
+            licenceNo = row.LicenceNo,
+            active = row.Active,
+            gender = row.Gender
+        });
     }
 
     [HttpPost]
@@ -87,7 +121,7 @@ public class CrmDoctorsController : ControllerBase
             if (result.Result != null)
                 return result.Result;
 
-            return Ok(new { doctorId = id, fileName = result.FileName, virtualPath = result.VirtualPath });
+            return Ok(new { doctorId = id, fileName = result.FileName, virtualPath = result.VirtualPath, doctorPhotoUrl = BuildDoctorPhotoUrl(result.FileName) });
         }
 
         return Ok(new { doctorId = id });
@@ -95,10 +129,32 @@ public class CrmDoctorsController : ControllerBase
 
     [HttpPut("{doctorId:int}")]
     [Permission("Doctors.Manage")]
+    [Consumes("application/json")]
     public async Task<IActionResult> Update([FromRoute] int doctorId, [FromBody] CrmDoctorUpsertRequest request)
     {
         request.DId = doctorId;
         var id = await _crmDoctorRepository.UpsertAsync(request);
+        return Ok(new { doctorId = id });
+    }
+
+    [HttpPut("{doctorId:int}/multipart")]
+    [Permission("Doctors.Manage")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxUploadBytes)]
+    public async Task<IActionResult> Update([FromRoute] int doctorId, [FromForm] DoctorCreateFormRequest request)
+    {
+        request.DId = doctorId;
+        var id = await _crmDoctorRepository.UpsertAsync(request);
+
+        if (request.File != null)
+        {
+            var result = await SaveDoctorPhotoAsync(id, request.File);
+            if (result.Result != null)
+                return result.Result;
+
+            return Ok(new { doctorId = id, fileName = result.FileName, virtualPath = result.VirtualPath, doctorPhotoUrl = BuildDoctorPhotoUrl(result.FileName) });
+        }
+
         return Ok(new { doctorId = id });
     }
 
@@ -130,7 +186,7 @@ public class CrmDoctorsController : ControllerBase
         if (result.Result != null)
             return result.Result;
 
-        return Ok(new { doctorId, fileName = result.FileName, virtualPath = result.VirtualPath });
+        return Ok(new { doctorId, fileName = result.FileName, virtualPath = result.VirtualPath, doctorPhotoUrl = BuildDoctorPhotoUrl(result.FileName) });
     }
 
     private async Task<(IActionResult? Result, string? FileName, string? VirtualPath)> SaveDoctorPhotoAsync(int doctorId, IFormFile file)
