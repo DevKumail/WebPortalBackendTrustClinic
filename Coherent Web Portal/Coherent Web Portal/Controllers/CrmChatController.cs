@@ -157,6 +157,21 @@ public class CrmChatController : ControllerBase
     public async Task<IActionResult> MarkThreadRead([FromRoute] string crmThreadId, [FromQuery] string doctorLicenseNo)
     {
         var result = await _chatRepository.MarkThreadAsReadAsync(crmThreadId, doctorLicenseNo);
+
+        try
+        {
+            await _hub.Clients.Group(crmThreadId).SendAsync("chat.thread.read", new
+            {
+                crmThreadId,
+                doctorLicenseNo,
+                readAtUtc = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to broadcast chat thread read via SignalR");
+        }
+
         return Ok(result);
     }
 }

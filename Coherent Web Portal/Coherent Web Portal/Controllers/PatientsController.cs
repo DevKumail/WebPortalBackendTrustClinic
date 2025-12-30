@@ -54,8 +54,11 @@ public class PatientsController : ControllerBase
             var (patients, totalCount) = await _patientRepository.SearchPatientsAsync(
                 request.MRNo,
                 request.Name,
-                request.EmiratesIDN,
+                request.PersonSocialSecurityNo,
                 request.CellPhone,
+                request.VisitDateFrom,
+                request.VisitDateTo,
+                request.OnboardedOnMobileApp,
                 request.PageNumber,
                 request.PageSize);
 
@@ -73,14 +76,14 @@ public class PatientsController : ControllerBase
                 PersonEmail = p.PersonEmail,
                 PersonAddress1 = p.PersonAddress1,
                 Nationality = p.Nationality,
-                EmiratesIDN = p.EmiratesIDN,
+                PersonSocialSecurityNo = p.PersonSocialSecurityNo,
                 PatientFirstVisitDate = PatientListItemDto.ParseDbDate(p.PatientFirstVisitDate),
                 PatientFirstVisitDateString = p.PatientFirstVisitDate,
                 CreatedDate = PatientListItemDto.ParseDbDate(p.CreatedDate),
                 CreatedDateString = p.CreatedDate,
                 VIPPatient = p.VIPPatient,
-                Inactive = p.Inactive,
-                FacilityName = p.FacilityName
+                FacilityName = p.FacilityName,
+                IsMobileUser = p.IsMobileUser
             }).ToList();
 
             var response = new PaginatedPatientResponse
@@ -139,14 +142,14 @@ public class PatientsController : ControllerBase
                 PersonEmail = patient.PersonEmail,
                 PersonAddress1 = patient.PersonAddress1,
                 Nationality = patient.Nationality,
-                EmiratesIDN = patient.EmiratesIDN,
+                PersonSocialSecurityNo = patient.PersonSocialSecurityNo,
                 PatientFirstVisitDate = PatientListItemDto.ParseDbDate(patient.PatientFirstVisitDate),
                 PatientFirstVisitDateString = patient.PatientFirstVisitDate,
                 CreatedDate = PatientListItemDto.ParseDbDate(patient.CreatedDate),
                 CreatedDateString = patient.CreatedDate,
                 VIPPatient = patient.VIPPatient,
-                Inactive = patient.Inactive,
-                FacilityName = patient.FacilityName
+                FacilityName = patient.FacilityName,
+                IsMobileUser = patient.IsMobileUser
             };
 
             return Ok(patientDto);

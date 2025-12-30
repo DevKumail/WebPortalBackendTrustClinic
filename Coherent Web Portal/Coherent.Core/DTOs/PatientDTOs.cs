@@ -31,14 +31,14 @@ public class PatientListItemDto
     public string? PersonEmail { get; set; }
     public string? PersonAddress1 { get; set; }
     public string? Nationality { get; set; }
-    public string? EmiratesIDN { get; set; }
+    public string? PersonSocialSecurityNo { get; set; }
     public DateTime? PatientFirstVisitDate { get; set; }
     public string? PatientFirstVisitDateString { get; set; } // Original string from DB
     public DateTime? CreatedDate { get; set; }
     public string? CreatedDateString { get; set; } // Original string from DB
     public bool? VIPPatient { get; set; }
-    public bool? Inactive { get; set; }
     public string? FacilityName { get; set; }
+    public bool? IsMobileUser { get; set; } // On-boarded on Mobile App: Yes/No
     
     /// <summary>
     /// Helper method to convert database date string (YYYYMMDDHHMMSS) to DateTime
@@ -89,8 +89,20 @@ public class PatientSearchRequest
 {
     public string? MRNo { get; set; }
     public string? Name { get; set; }
-    public string? EmiratesIDN { get; set; }
+    public string? PersonSocialSecurityNo { get; set; }
     public string? CellPhone { get; set; }
+    /// <summary>
+    /// Visit date range start (default: current date - 31 days)
+    /// </summary>
+    public DateTime? VisitDateFrom { get; set; }
+    /// <summary>
+    /// Visit date range end (default: today)
+    /// </summary>
+    public DateTime? VisitDateTo { get; set; }
+    /// <summary>
+    /// Filter by mobile app onboarding status: true = Yes, false = No, null = Both
+    /// </summary>
+    public bool? OnboardedOnMobileApp { get; set; }
     public int PageNumber { get; set; } = 1;
     public int PageSize { get; set; } = 20;
 }

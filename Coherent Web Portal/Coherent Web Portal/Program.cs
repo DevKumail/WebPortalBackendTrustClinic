@@ -332,6 +332,13 @@ builder.Services.AddScoped<ICrmDoctorFacilityRepository>(provider =>
     return new Coherent.Infrastructure.Repositories.CrmDoctorFacilityRepository(connection);
 });
 
+builder.Services.AddScoped<IFacilityServiceRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.FacilityServiceRepository(connection);
+});
+
 // Register Patient Health Repository (uses primary database - UEMedical_For_R&D)
 builder.Services.AddScoped<IPatientHealthRepository>(provider =>
 {

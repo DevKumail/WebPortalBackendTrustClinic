@@ -21,13 +21,18 @@ public class PatientRepository : IPatientRepository
     public async Task<(IEnumerable<RegPatient> Patients, int TotalCount)> SearchPatientsAsync(
         string? mrNo,
         string? name,
-        string? emiratesIDN,
+        string? personSocialSecurityNo,
         string? cellPhone,
+        DateTime? visitDateFrom,
+        DateTime? visitDateTo,
+        bool? onboardedOnMobileApp,
         int pageNumber,
         int pageSize)
     {
-        var whereClauses = new List<string>();
-        var parameters = new DynamicParameters();
+        try
+        {
+            var whereClauses = new List<string>();
+            var parameters = new DynamicParameters();
 
         // Build WHERE clause based on search criteria
         if (!string.IsNullOrWhiteSpace(mrNo))
@@ -42,10 +47,10 @@ public class PatientRepository : IPatientRepository
             parameters.Add("Name", $"%{name}%");
         }
 
-        if (!string.IsNullOrWhiteSpace(emiratesIDN))
+        if (!string.IsNullOrWhiteSpace(personSocialSecurityNo))
         {
-            whereClauses.Add("EmiratesIDN LIKE @EmiratesIDN");
-            parameters.Add("EmiratesIDN", $"%{emiratesIDN}%");
+            whereClauses.Add("PersonSocialSecurityNo LIKE @PersonSocialSecurityNo");
+            parameters.Add("PersonSocialSecurityNo", $"%{personSocialSecurityNo}%");
         }
 
         if (!string.IsNullOrWhiteSpace(cellPhone))
@@ -54,13 +59,62 @@ public class PatientRepository : IPatientRepository
             parameters.Add("CellPhone", $"%{cellPhone}%");
         }
 
+        // Visit date range filter (uses BLPatientVisit via SchAppointment for actual visit dates)
+        bool hasVisitDateFilter = visitDateFrom.HasValue || visitDateTo.HasValue;
+        if (visitDateFrom.HasValue)
+        {
+            var fromDateStr = visitDateFrom.Value.ToString("yyyyMMdd");
+            parameters.Add("VisitDateFrom", fromDateStr);
+        }
+
+        if (visitDateTo.HasValue)
+        {
+            var toDateStr = visitDateTo.Value.ToString("yyyyMMdd");
+            parameters.Add("VisitDateTo", toDateStr);
+        }
+
+        // Mobile app onboarding filter
+        if (onboardedOnMobileApp.HasValue)
+        {
+            whereClauses.Add("IsMobileUser = @IsMobileUser");
+            parameters.Add("IsMobileUser", onboardedOnMobileApp.Value);
+        }
+
         var whereClause = whereClauses.Any() ? "WHERE " + string.Join(" AND ", whereClauses) : "";
 
+        // Build visit date join clause if filtering by visit date
+        var visitDateJoin = "";
+        var visitDateWhereClause = "";
+        if (hasVisitDateFilter)
+        {
+            visitDateJoin = @"
+                INNER JOIN SchAppointment SA ON RP.MRNo = SA.MRNo";
+            
+            var visitDateConditions = new List<string>();
+            if (visitDateFrom.HasValue)
+            {
+                visitDateConditions.Add("SA.AppDate >= @VisitDateFrom");
+            }
+            if (visitDateTo.HasValue)
+            {
+                visitDateConditions.Add("SA.AppDate <= @VisitDateTo");
+            }
+            visitDateWhereClause = visitDateConditions.Any() 
+                ? (whereClauses.Any() ? " AND " : " WHERE ") + string.Join(" AND ", visitDateConditions)
+                : "";
+        }
+
         // Get total count
-        var countQuery = $@"
-            SELECT COUNT(*) 
-            FROM RegPatient 
-            {whereClause}";
+        var countQuery = hasVisitDateFilter
+            ? $@"
+                SELECT COUNT(DISTINCT RP.MRNo) 
+                FROM RegPatient RP
+                {visitDateJoin}
+                {whereClause.Replace("WHERE ", "WHERE RP.").Replace(" AND ", " AND RP.")}{visitDateWhereClause}"
+            : $@"
+                SELECT COUNT(*) 
+                FROM RegPatient 
+                {whereClause}";
 
         var totalCount = await _connection.ExecuteScalarAsync<int>(countQuery, parameters);
 
@@ -69,37 +123,75 @@ public class PatientRepository : IPatientRepository
         parameters.Add("Offset", offset);
         parameters.Add("PageSize", pageSize);
 
-        var dataQuery = $@"
-            SELECT 
-                MRNo,
-                PersonFirstName,
-                PersonMiddleName,
-                PersonLastName,
-                PersonSex,
-                PatientBirthDate,
-                PersonCellPhone,
-                PersonEmail,
-                PersonAddress1,
-                Nationality,
-                EmiratesIDN,
-                PatientFirstVisitDate,
-                CreatedDate,
-                VIPPatient,
-                Inactive,
-                FacilityName,
-                PersonHomePhone1,
-                PersonWorkPhone1,
-                PersonCountryId,
-                PatientBloodGroupId
-            FROM RegPatient 
-            {whereClause}
-            ORDER BY CreatedDate DESC
-            OFFSET @Offset ROWS
-            FETCH NEXT @PageSize ROWS ONLY";
+        var dataQuery = hasVisitDateFilter
+            ? $@"
+                SELECT DISTINCT
+                    RP.MRNo,
+                    RP.PersonFirstName,
+                    RP.PersonMiddleName,
+                    RP.PersonLastName,
+                    RP.PersonSex,
+                    RP.PatientBirthDate,
+                    RP.PersonCellPhone,
+                    RP.PersonEmail,
+                    RP.PersonAddress1,
+                    N.NationalityName AS Nationality,
+                    RP.PersonSocialSecurityNo,
+                    RP.PatientFirstVisitDate,
+                    RP.CreatedDate,
+                    RP.VIPPatient,
+                    RP.FacilityName,
+                    RP.PersonHomePhone1,
+                    RP.PersonWorkPhone1,
+                    RP.PersonCountryId,
+                    RP.PatientBloodGroupId,
+                    RP.IsMobileUser
+                FROM RegPatient RP
+                LEFT JOIN Nationality N ON TRY_CAST(RP.Nationality AS INT) = N.NationalityId
+                {visitDateJoin}
+                {whereClause.Replace("WHERE ", "WHERE RP.").Replace(" AND ", " AND RP.")}{visitDateWhereClause}
+                ORDER BY RP.CreatedDate DESC
+                OFFSET @Offset ROWS
+                FETCH NEXT @PageSize ROWS ONLY"
+            : $@"
+                SELECT 
+                    RP.MRNo,
+                    RP.PersonFirstName,
+                    RP.PersonMiddleName,
+                    RP.PersonLastName,
+                    RP.PersonSex,
+                    RP.PatientBirthDate,
+                    RP.PersonCellPhone,
+                    RP.PersonEmail,
+                    RP.PersonAddress1,
+                    N.NationalityName AS Nationality,
+                    RP.PersonSocialSecurityNo,
+                    RP.PatientFirstVisitDate,
+                    RP.CreatedDate,
+                    RP.VIPPatient,
+                    RP.FacilityName,
+                    RP.PersonHomePhone1,
+                    RP.PersonWorkPhone1,
+                    RP.PersonCountryId,
+                    RP.PatientBloodGroupId,
+                    RP.IsMobileUser
+                FROM RegPatient RP
+                LEFT JOIN Nationality N ON TRY_CAST(RP.Nationality AS INT) = N.NationalityId
+                {whereClause.Replace("WHERE ", "WHERE RP.").Replace(" AND ", " AND RP.")}
+                ORDER BY RP.CreatedDate DESC
+                OFFSET @Offset ROWS
+                FETCH NEXT @PageSize ROWS ONLY";
 
-        var patients = await _connection.QueryAsync<RegPatient>(dataQuery, parameters);
+            var patients = await _connection.QueryAsync<RegPatient>(dataQuery, parameters);
 
-        return (patients, totalCount);
+            return (patients, totalCount);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] SearchPatientsAsync failed: {ex.Message}");
+            Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+            throw;
+        }
     }
 
     public async Task<RegPatient?> GetPatientByMRNoAsync(string mrNo)

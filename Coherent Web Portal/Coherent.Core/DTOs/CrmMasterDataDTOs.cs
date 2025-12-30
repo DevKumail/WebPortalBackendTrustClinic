@@ -89,6 +89,40 @@ public class CrmFacilityUpsertRequest
     public string? ArAboutShort { get; set; }
 }
 
+public class FacilityDropdownItemDto
+{
+    public int FId { get; set; }
+    public string? FName { get; set; }
+}
+
+public class FacilityServiceUpsertRequest
+{
+    public int? SId { get; set; }
+    public int? FId { get; set; }
+    public string? ServiceTitle { get; set; }
+    public string? ArServiceTitle { get; set; }
+    public string? ServiceIntro { get; set; }
+    public string? ArServiceIntro { get; set; }
+    public bool? Active { get; set; }
+    public int? DisplayOrder { get; set; }
+    public string? DisplayImageName { get; set; }
+    public string? IconImageName { get; set; }
+}
+
+public class FacilityServiceListItemDto
+{
+    public int SId { get; set; }
+    public int? FId { get; set; }
+    public string? ServiceTitle { get; set; }
+    public string? ArServiceTitle { get; set; }
+    public string? ServiceIntro { get; set; }
+    public string? ArServiceIntro { get; set; }
+    public bool? Active { get; set; }
+    public int? DisplayOrder { get; set; }
+    public string? DisplayImageName { get; set; }
+    public string? IconImageName { get; set; }
+}
+
 public class CrmDoctorFacilityUpsertRequest
 {
     [JsonPropertyName("doctorId")]

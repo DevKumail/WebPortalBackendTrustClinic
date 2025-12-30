@@ -155,4 +155,5 @@ public class RegPatient
     public int? PODTypeId { get; set; }
     public string? EmirateIdIssueDate { get; set; } // Stored as string: YYYYMMDDHHMMSS
     public string? EmirateIdExpiryDate { get; set; } // Stored as string: YYYYMMDDHHMMSS
+    public bool? IsMobileUser { get; set; } // Flag to indicate if patient has registered on mobile app
 }

@@ -3,6 +3,7 @@ using Coherent.Core.Interfaces;
 using Coherent.Domain.Entities;
 using Dapper;
 using System.Data;
+using System.Linq;
 
 namespace Coherent.Infrastructure.Repositories;
 
@@ -83,5 +84,35 @@ SELECT CAST(SCOPE_IDENTITY() as int);";
 
         var newId = await _connection.QuerySingleAsync<int>(insertSql, request);
         return newId;
+    }
+
+    public async Task<bool> UpdateFacilityImagesAsync(int facilityId, string facilityImages)
+    {
+        var sql = @"
+UPDATE MFacility
+SET FacilityImages = @FacilityImages
+WHERE FId = @FacilityId";
+
+        var rows = await _connection.ExecuteAsync(sql, new
+        {
+            FacilityId = facilityId,
+            FacilityImages = facilityImages
+        });
+
+        return rows > 0;
+    }
+
+    public async Task<bool> DeleteAsync(int facilityId)
+    {
+        var sql = "DELETE FROM MFacility WHERE FId = @FacilityId";
+        var rows = await _connection.ExecuteAsync(sql, new { FacilityId = facilityId });
+        return rows > 0;
+    }
+
+    public async Task<List<FacilityDropdownItemDto>> GetDropdownAsync()
+    {
+        var sql = "SELECT FId, FName FROM MFacility ORDER BY FName";
+        var rows = await _connection.QueryAsync<FacilityDropdownItemDto>(sql);
+        return rows.ToList();
     }
 }

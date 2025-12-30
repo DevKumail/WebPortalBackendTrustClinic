@@ -11,8 +11,11 @@ public interface IPatientRepository
     Task<(IEnumerable<RegPatient> Patients, int TotalCount)> SearchPatientsAsync(
         string? mrNo,
         string? name,
-        string? emiratesIDN,
+        string? personSocialSecurityNo,
         string? cellPhone,
+        DateTime? visitDateFrom,
+        DateTime? visitDateTo,
+        bool? onboardedOnMobileApp,
         int pageNumber,
         int pageSize);
 

@@ -8,4 +8,9 @@ public interface ICrmFacilityRepository
     Task<List<MFacility>> GetAllAsync(bool includeInactive);
     Task<MFacility?> GetByIdAsync(int facilityId);
     Task<int> UpsertAsync(CrmFacilityUpsertRequest request);
+
+    Task<bool> UpdateFacilityImagesAsync(int facilityId, string facilityImages);
+
+    Task<bool> DeleteAsync(int facilityId);
+    Task<List<FacilityDropdownItemDto>> GetDropdownAsync();
 }
