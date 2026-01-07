@@ -20,4 +20,6 @@ public interface IPatientRepository
         int pageSize);
 
     Task<RegPatient?> GetPatientByMRNoAsync(string mrNo);
+    
+    Task<bool> UpdateIsMobileUserAsync(string mrNo, bool isMobileUser);
 }

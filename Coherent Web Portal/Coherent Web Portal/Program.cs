@@ -159,11 +159,37 @@ builder.Services.AddAuthentication(options =>
     {
         OnMessageReceived = context =>
         {
-            var accessToken = context.Request.Query["access_token"].FirstOrDefault();
             var path = context.HttpContext.Request.Path;
 
-            if (!string.IsNullOrWhiteSpace(accessToken) && path.StartsWithSegments("/hubs/crm-chat"))
-                context.Token = accessToken;
+            // For SignalR hub connections
+            if (path.StartsWithSegments("/hubs/crm-chat"))
+            {
+                // First check query string token (web clients)
+                var accessToken = context.Request.Query["access_token"].FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(accessToken))
+                {
+                    context.Token = accessToken;
+                    return Task.CompletedTask;
+                }
+
+                // Check for API key (mobile backend service connection)
+                var apiKey = context.Request.Headers["X-API-Key"].FirstOrDefault()
+                    ?? context.Request.Query["api_key"].FirstOrDefault();
+                
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    var expectedKey = context.HttpContext.RequestServices
+                        .GetRequiredService<IConfiguration>()["SignalR:ServiceApiKey"];
+                    
+                    if (!string.IsNullOrWhiteSpace(expectedKey) && apiKey == expectedKey)
+                    {
+                        // Mark as service connection and skip JWT validation
+                        context.HttpContext.Items["IsServiceConnection"] = true;
+                        context.NoResult();
+                        return Task.CompletedTask;
+                    }
+                }
+            }
 
             return Task.CompletedTask;
         },
@@ -337,6 +363,13 @@ builder.Services.AddScoped<IFacilityServiceRepository>(provider =>
     var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
     var connection = factory.CreateSecondaryConnection();
     return new Coherent.Infrastructure.Repositories.FacilityServiceRepository(connection);
+});
+
+builder.Services.AddScoped<ISubServiceRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.SubServiceRepository(connection);
 });
 
 // Register Patient Health Repository (uses primary database - UEMedical_For_R&D)

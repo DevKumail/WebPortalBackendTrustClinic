@@ -10,4 +10,5 @@ public interface ICrmDoctorRepository
     Task<int> UpsertAsync(CrmDoctorUpsertRequest request);
 
     Task<bool> UpdateDoctorPhotoAsync(int doctorId, string doctorPhotoName);
+    Task<bool> DeleteAsync(int doctorId);
 }

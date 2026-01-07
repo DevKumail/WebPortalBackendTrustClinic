@@ -46,7 +46,8 @@ SELECT
     d.Gender
 FROM MDoctors d
 LEFT JOIN MSpecility s ON d.SPId = s.SPId
-WHERE (@IncludeInactive = 1 OR d.Active = 1)
+WHERE d.IsDeleted = 0
+  AND (@IncludeInactive = 1 OR d.Active = 1)
 ORDER BY d.DoctorName";
 
         var rows = await _connection.QueryAsync<CrmDoctorListItemDto>(sql, new
@@ -141,6 +142,13 @@ WHERE DId = @DoctorId";
             DoctorPhotoName = doctorPhotoName
         });
 
+        return rows > 0;
+    }
+
+    public async Task<bool> DeleteAsync(int doctorId)
+    {
+        var sql = "UPDATE MDoctors SET IsDeleted = 1 WHERE DId = @DoctorId";
+        var rows = await _connection.ExecuteAsync(sql, new { DoctorId = doctorId });
         return rows > 0;
     }
 }

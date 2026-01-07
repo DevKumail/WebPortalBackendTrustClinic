@@ -15,6 +15,7 @@ namespace Coherent.Web.Portal.Controllers;
 public class FacilityServicesController : ControllerBase
 {
     private readonly IFacilityServiceRepository _facilityServiceRepository;
+    private readonly ISubServiceRepository _subServiceRepository;
     private readonly ILogger<FacilityServicesController> _logger;
 
     private const long MaxUploadBytes = 5 * 1024 * 1024;
@@ -32,9 +33,13 @@ public class FacilityServicesController : ControllerBase
         public IFormFile? IconImageFile { get; set; }
     }
 
-    public FacilityServicesController(IFacilityServiceRepository facilityServiceRepository, ILogger<FacilityServicesController> logger)
+    public FacilityServicesController(
+        IFacilityServiceRepository facilityServiceRepository,
+        ISubServiceRepository subServiceRepository,
+        ILogger<FacilityServicesController> logger)
     {
         _facilityServiceRepository = facilityServiceRepository;
+        _subServiceRepository = subServiceRepository;
         _logger = logger;
     }
 
@@ -60,22 +65,27 @@ public class FacilityServicesController : ControllerBase
 
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
 
-        var iconPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "service-icons", fileName);
+        var iconPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "icons", fileName);
         if (System.IO.File.Exists(iconPath))
-            return $"{baseUrl}/images/service-icons/{fileName.TrimStart('/')}";
+            return $"{baseUrl}/images/icons/{fileName.TrimStart('/')}";
 
-        return $"{baseUrl}/images/services/{fileName.TrimStart('/')}";
+        return $"{baseUrl}/images/icons/{fileName.TrimStart('/')}";
     }
 
     [HttpGet]
     [Permission("FacilityServices.Read")]
-    public async Task<IActionResult> GetAll([FromQuery] int? facilityId = null, [FromQuery] bool includeInactive = false)
+    public async Task<IActionResult> GetAll([FromQuery] int? facilityId = null, [FromQuery] bool includeInactive = false, [FromQuery] bool includeSubServices = false)
     {
         var rows = await _facilityServiceRepository.GetAllAsync(facilityId, includeInactive);
         foreach (var r in rows)
         {
             r.DisplayImageName = BuildServiceDisplayImageUrl(r.DisplayImageName);
             r.IconImageName = BuildServiceIconUrl(r.IconImageName);
+            
+            if (includeSubServices)
+            {
+                r.SubServices = await _subServiceRepository.GetByServiceIdAsync(r.SId);
+            }
         }
 
         return Ok(rows);
@@ -89,10 +99,22 @@ public class FacilityServicesController : ControllerBase
         if (row == null)
             return NotFound(new { message = $"Service with ID {serviceId} not found" });
 
-        row.DisplayImageName = BuildServiceDisplayImageUrl(row.DisplayImageName);
-        row.IconImageName = BuildServiceIconUrl(row.IconImageName);
+        var subServices = await _subServiceRepository.GetByServiceIdAsync(serviceId);
 
-        return Ok(row);
+        return Ok(new
+        {
+            sId = row.SId,
+            fId = row.FId,
+            serviceTitle = row.ServiceTitle,
+            arServiceTitle = row.ArServiceTitle,
+            serviceIntro = row.ServiceIntro,
+            arServiceIntro = row.ArServiceIntro,
+            active = row.Active,
+            displayOrder = row.DisplayOrder,
+            displayImageName = BuildServiceDisplayImageUrl(row.DisplayImageName),
+            iconImageName = BuildServiceIconUrl(row.IconImageName),
+            subServices = subServices
+        });
     }
 
     [HttpPost]
@@ -119,12 +141,26 @@ public class FacilityServicesController : ControllerBase
         }
 
         var updated = await _facilityServiceRepository.GetByIdAsync(id);
-        if (updated != null)
-        {
-            updated.DisplayImageName = BuildServiceDisplayImageUrl(updated.DisplayImageName);
-            updated.IconImageName = BuildServiceIconUrl(updated.IconImageName);
-        }
-        return Ok(new { serviceId = id, row = updated });
+        var subServices = await _subServiceRepository.GetByServiceIdAsync(id);
+        
+        return Ok(new 
+        { 
+            serviceId = id, 
+            row = updated != null ? new
+            {
+                sId = updated.SId,
+                fId = updated.FId,
+                serviceTitle = updated.ServiceTitle,
+                arServiceTitle = updated.ArServiceTitle,
+                serviceIntro = updated.ServiceIntro,
+                arServiceIntro = updated.ArServiceIntro,
+                active = updated.Active,
+                displayOrder = updated.DisplayOrder,
+                displayImageName = BuildServiceDisplayImageUrl(updated.DisplayImageName),
+                iconImageName = BuildServiceIconUrl(updated.IconImageName),
+                subServices = subServices
+            } : null
+        });
     }
 
     [HttpDelete("{serviceId:int}")]
@@ -174,12 +210,68 @@ public class FacilityServicesController : ControllerBase
         }
 
         var updated = await _facilityServiceRepository.GetByIdAsync(id);
-        if (updated != null)
-        {
-            updated.DisplayImageName = BuildServiceDisplayImageUrl(updated.DisplayImageName);
-            updated.IconImageName = BuildServiceIconUrl(updated.IconImageName);
-        }
-        return Ok(new { serviceId = id, row = updated });
+        var subServices = await _subServiceRepository.GetByServiceIdAsync(id);
+        
+        return Ok(new 
+        { 
+            serviceId = id, 
+            row = updated != null ? new
+            {
+                sId = updated.SId,
+                fId = updated.FId,
+                serviceTitle = updated.ServiceTitle,
+                arServiceTitle = updated.ArServiceTitle,
+                serviceIntro = updated.ServiceIntro,
+                arServiceIntro = updated.ArServiceIntro,
+                active = updated.Active,
+                displayOrder = updated.DisplayOrder,
+                displayImageName = BuildServiceDisplayImageUrl(updated.DisplayImageName),
+                iconImageName = BuildServiceIconUrl(updated.IconImageName),
+                subServices = subServices
+            } : null
+        });
+    }
+
+    /// <summary>
+    /// Upload Display Image for a Service
+    /// </summary>
+    [HttpPost("{serviceId:int}/display-image")]
+    [Permission("FacilityServices.Manage")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxUploadBytes)]
+    public async Task<IActionResult> UploadDisplayImage([FromRoute] int serviceId, IFormFile file)
+    {
+        var result = await SaveServiceImageAsync(serviceId, file, isIcon: false);
+        if (result.Result != null)
+            return result.Result;
+
+        return Ok(new 
+        { 
+            serviceId, 
+            displayImageName = result.FileName,
+            displayImageUrl = BuildServiceDisplayImageUrl(result.FileName)
+        });
+    }
+
+    /// <summary>
+    /// Upload Icon Image for a Service (after creating service via JSON endpoint)
+    /// </summary>
+    [HttpPost("{serviceId:int}/icon-image")]
+    [Permission("FacilityServices.Manage")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxUploadBytes)]
+    public async Task<IActionResult> UploadIconImage([FromRoute] int serviceId, IFormFile file)
+    {
+        var result = await SaveServiceImageAsync(serviceId, file, isIcon: true);
+        if (result.Result != null)
+            return result.Result;
+
+        return Ok(new 
+        { 
+            serviceId, 
+            iconImageName = result.FileName,
+            iconImageUrl = BuildServiceIconUrl(result.FileName)
+        });
     }
 
     private async Task<(IActionResult? Result, string? FileName, string? VirtualPath)> SaveServiceImageAsync(int serviceId, IFormFile file, bool isIcon)
@@ -199,7 +291,7 @@ public class FacilityServicesController : ControllerBase
             return (NotFound(new { message = $"Service with ID {serviceId} not found" }), null, null);
 
         var root = isIcon
-            ? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "service-icons")
+            ? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "icons")
             : Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "services");
         Directory.CreateDirectory(root);
 

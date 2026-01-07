@@ -5,7 +5,7 @@ https://go.microsoft.com/fwlink/?LinkID=208121.
 <Project>
   <PropertyGroup>
     <_PublishTargetUrl>C:\Users\DELL\Desktop\TrustClinic\Web Backend\Coherent Web Portal\Coherent Web Portal\bin\Release\net8.0\publish\</_PublishTargetUrl>
-    <History>True|2025-12-26T13:27:52.0723453Z||;True|2025-12-26T18:11:39.2374458+05:00||;True|2025-12-26T17:17:44.6264344+05:00||;True|2025-12-25T17:06:21.7065502+05:00||;True|2025-12-23T15:13:31.8064115+05:00||;</History>
+    <History>True|2026-01-07T01:26:41.9072397Z||;True|2025-12-31T18:53:06.1037699+05:00||;True|2025-12-31T17:37:20.4411676+05:00||;True|2025-12-26T18:27:52.0723453+05:00||;True|2025-12-26T18:11:39.2374458+05:00||;True|2025-12-26T17:17:44.6264344+05:00||;True|2025-12-25T17:06:21.7065502+05:00||;True|2025-12-23T15:13:31.8064115+05:00||;</History>
     <LastFailureDetails />
   </PropertyGroup>
 </Project>

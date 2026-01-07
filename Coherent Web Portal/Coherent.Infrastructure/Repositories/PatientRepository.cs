@@ -116,7 +116,9 @@ public class PatientRepository : IPatientRepository
                 FROM RegPatient 
                 {whereClause}";
 
+        Console.WriteLine($"[DEBUG] Count Query: {countQuery}");
         var totalCount = await _connection.ExecuteScalarAsync<int>(countQuery, parameters);
+        Console.WriteLine($"[DEBUG] Total Count: {totalCount}");
 
         // Get paginated results
         var offset = (pageNumber - 1) * pageSize;
@@ -182,7 +184,9 @@ public class PatientRepository : IPatientRepository
                 OFFSET @Offset ROWS
                 FETCH NEXT @PageSize ROWS ONLY";
 
+            Console.WriteLine($"[DEBUG] Data Query: {dataQuery}");
             var patients = await _connection.QueryAsync<RegPatient>(dataQuery, parameters);
+            Console.WriteLine($"[DEBUG] Patients retrieved: {patients.Count()}");
 
             return (patients, totalCount);
         }
@@ -202,5 +206,24 @@ public class PatientRepository : IPatientRepository
             WHERE MRNo = @MRNo";
 
         return await _connection.QueryFirstOrDefaultAsync<RegPatient>(query, new { MRNo = mrNo });
+    }
+
+    public async Task<bool> UpdateIsMobileUserAsync(string mrNo, bool isMobileUser)
+    {
+        try
+        {
+            var query = @"
+                UPDATE RegPatient 
+                SET IsMobileUser = @IsMobileUser 
+                WHERE MRNo = @MRNo";
+
+            var rowsAffected = await _connection.ExecuteAsync(query, new { MRNo = mrNo, IsMobileUser = isMobileUser });
+            return rowsAffected > 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] UpdateIsMobileUserAsync failed: {ex.Message}");
+            throw;
+        }
     }
 }

@@ -31,7 +31,8 @@ SELECT
     s.DisplayImageName,
     s.IconImageName
 FROM MServices s
-WHERE (@FacilityId IS NULL OR s.FId = @FacilityId)
+WHERE s.IsDeleted = 0
+  AND (@FacilityId IS NULL OR s.FId = @FacilityId)
   AND (@IncludeInactive = 1 OR s.Active = 1)
 ORDER BY COALESCE(s.DisplayOrder, 0) ASC, s.SId DESC";
 
@@ -52,6 +53,8 @@ ORDER BY COALESCE(s.DisplayOrder, 0) ASC, s.SId DESC";
 
     public async Task<int> UpsertAsync(FacilityServiceUpsertRequest request)
     {
+        int serviceId;
+
         if (request.SId.HasValue)
         {
             var updateSql = @"
@@ -68,10 +71,11 @@ SET FId = @FId,
 WHERE SId = @SId";
 
             await _connection.ExecuteAsync(updateSql, request);
-            return request.SId.Value;
+            serviceId = request.SId.Value;
         }
-
-        var insertSql = @"
+        else
+        {
+            var insertSql = @"
 INSERT INTO MServices
 (
     FId, ServiceTitle, ArServiceTitle, ServiceIntro, ArServiceIntro,
@@ -84,7 +88,58 @@ VALUES
 );
 SELECT CAST(SCOPE_IDENTITY() as int);";
 
-        return await _connection.QuerySingleAsync<int>(insertSql, request);
+            serviceId = await _connection.QuerySingleAsync<int>(insertSql, request);
+        }
+
+        // Handle SubServices if provided
+        if (request.SubServices != null && request.SubServices.Any())
+        {
+            await UpsertSubServicesAsync(serviceId, request.FId, request.SubServices);
+        }
+
+        return serviceId;
+    }
+
+    private async Task UpsertSubServicesAsync(int serviceId, int? facilityId, List<SubServiceUpsertRequest> subServices)
+    {
+        foreach (var sub in subServices)
+        {
+            sub.SId = serviceId;
+            sub.FId = facilityId;
+
+            if (sub.SSId.HasValue && sub.SSId.Value > 0)
+            {
+                var updateSql = @"
+UPDATE MSubServices
+SET SubServiceTitle = @SubServiceTitle,
+    ArSubServiceTitle = @ArSubServiceTitle,
+    Details = @Details,
+    ArDetails = @ArDetails,
+    DisplayOrder = @DisplayOrder,
+    Active = @Active,
+    FId = @FId,
+    SId = @SId
+WHERE SSId = @SSId";
+
+                await _connection.ExecuteAsync(updateSql, sub);
+            }
+            else
+            {
+                var insertSql = @"
+INSERT INTO MSubServices
+(
+    SubServiceTitle, ArSubServiceTitle, Details, ArDetails,
+    DisplayOrder, Active, FId, SId, IsDeleted
+)
+VALUES
+(
+    @SubServiceTitle, @ArSubServiceTitle, @Details, @ArDetails,
+    @DisplayOrder, @Active, @FId, @SId, 0
+)";
+
+                await _connection.ExecuteAsync(insertSql, sub);
+            }
+        }
     }
 
     public async Task<bool> UpdateDisplayImageAsync(int serviceId, string displayImageName)
@@ -111,7 +166,7 @@ WHERE SId = @ServiceId";
 
     public async Task<bool> DeleteAsync(int serviceId)
     {
-        var sql = "DELETE FROM MServices WHERE SId = @ServiceId";
+        var sql = "UPDATE MServices SET IsDeleted = 1 WHERE SId = @ServiceId";
         var rows = await _connection.ExecuteAsync(sql, new { ServiceId = serviceId });
         return rows > 0;
     }

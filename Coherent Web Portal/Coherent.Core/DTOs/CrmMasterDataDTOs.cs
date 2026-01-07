@@ -107,6 +107,7 @@ public class FacilityServiceUpsertRequest
     public int? DisplayOrder { get; set; }
     public string? DisplayImageName { get; set; }
     public string? IconImageName { get; set; }
+    public List<SubServiceUpsertRequest>? SubServices { get; set; }
 }
 
 public class FacilityServiceListItemDto
@@ -121,6 +122,7 @@ public class FacilityServiceListItemDto
     public int? DisplayOrder { get; set; }
     public string? DisplayImageName { get; set; }
     public string? IconImageName { get; set; }
+    public List<SubServiceListItemDto>? SubServices { get; set; }
 }
 
 public class CrmDoctorFacilityUpsertRequest

@@ -232,4 +232,19 @@ public class CrmDoctorsController : ControllerBase
         var virtualPath = $"/images/doctors/{fileName}";
         return (null, fileName, virtualPath);
     }
+
+    [HttpDelete("{doctorId:int}")]
+    [Permission("Doctors.Manage")]
+    public async Task<IActionResult> Delete([FromRoute] int doctorId)
+    {
+        var existing = await _crmDoctorRepository.GetByIdAsync(doctorId);
+        if (existing == null)
+            return NotFound(new { message = $"Doctor with ID {doctorId} not found" });
+
+        var deleted = await _crmDoctorRepository.DeleteAsync(doctorId);
+        if (!deleted)
+            return StatusCode(500, new { message = "Failed to delete doctor" });
+
+        return Ok(new { doctorId });
+    }
 }
