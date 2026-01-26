@@ -17,13 +17,16 @@ namespace Coherent.Web.Portal.Controllers;
 public class PatientsController : ControllerBase
 {
     private readonly IPatientRepository _patientRepository;
+    private readonly IMobileUserRepository _mobileUserRepository;
     private readonly ILogger<PatientsController> _logger;
 
     public PatientsController(
         IPatientRepository patientRepository,
+        IMobileUserRepository mobileUserRepository,
         ILogger<PatientsController> logger)
     {
         _patientRepository = patientRepository;
+        _mobileUserRepository = mobileUserRepository;
         _logger = logger;
     }
 
@@ -189,6 +192,45 @@ public class PatientsController : ControllerBase
         {
             _logger.LogError(ex, "Error getting all patients");
             return StatusCode(500, new { message = "An error occurred while retrieving patients" });
+        }
+    }
+
+    [HttpGet("mobile-users/search")]
+    [ProducesResponseType(typeof(PaginatedMobileUserResponse), 200)]
+    [ProducesResponseType(400)]
+    public async Task<IActionResult> SearchMobileUsers([FromQuery] MobileUserSearchRequest request)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "Searching mobile users - MRNo: {MRNo}, Page: {Page}, PageSize: {PageSize}",
+                request.MRNo, request.PageNumber, request.PageSize);
+
+            if (request.PageNumber < 1)
+                request.PageNumber = 1;
+
+            if (request.PageSize < 1 || request.PageSize > 100)
+                request.PageSize = 20;
+
+            var (users, totalCount) = await _mobileUserRepository.SearchMobileUsersAsync(
+                request.MRNo,
+                request.PageNumber,
+                request.PageSize);
+
+            var response = new PaginatedMobileUserResponse
+            {
+                Users = users.ToList(),
+                TotalCount = totalCount,
+                PageNumber = request.PageNumber,
+                PageSize = request.PageSize
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching mobile users");
+            return StatusCode(500, new { message = "An error occurred while searching mobile users" });
         }
     }
 }

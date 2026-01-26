@@ -372,6 +372,44 @@ builder.Services.AddScoped<ISubServiceRepository>(provider =>
     return new Coherent.Infrastructure.Repositories.SubServiceRepository(connection);
 });
 
+// Register Patient Education Repositories (uses secondary database - CoherentMobApp)
+builder.Services.AddScoped<IPatientEducationCategoryRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.PatientEducationCategoryRepository(connection);
+});
+
+builder.Services.AddScoped<IPatientEducationRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.PatientEducationRepository(connection);
+});
+
+builder.Services.AddScoped<IPatientEducationAssignmentRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.PatientEducationAssignmentRepository(connection);
+});
+
+// Register Promotion Repository (uses secondary database - CoherentMobApp)
+builder.Services.AddScoped<IPromotionRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.PromotionRepository(connection);
+});
+
+// Register Mobile User Repository (uses secondary database - CoherentMobApp)
+builder.Services.AddScoped<IMobileUserRepository>(provider =>
+{
+    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
+    var connection = factory.CreateSecondaryConnection();
+    return new Coherent.Infrastructure.Repositories.MobileUserRepository(connection);
+});
+
 // Register Patient Health Repository (uses primary database - UEMedical_For_R&D)
 builder.Services.AddScoped<IPatientHealthRepository>(provider =>
 {

@@ -15,7 +15,11 @@ FROM (VALUES
     ('Appointments.Read', 'Appointments', 'View appointments'),
     ('Appointments.Book', 'Appointments', 'Book appointment'),
     ('Appointments.Cancel', 'Appointments', 'Cancel appointment'),
-    ('Appointments.Reschedule', 'Appointments', 'Reschedule appointment')
+    ('Appointments.Reschedule', 'Appointments', 'Reschedule appointment'),
+    ('PatientEducation.Read', 'PatientEducation', 'View patient education content'),
+    ('PatientEducation.Manage', 'PatientEducation', 'Create/update/delete patient education content'),
+    ('Promotions.Read', 'Promotions', 'View promotions/banners'),
+    ('Promotions.Manage', 'Promotions', 'Create/update/delete promotions/banners')
 ) v(PermissionKey, Module, Description)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.SecPermission p WHERE p.PermissionKey = v.PermissionKey
