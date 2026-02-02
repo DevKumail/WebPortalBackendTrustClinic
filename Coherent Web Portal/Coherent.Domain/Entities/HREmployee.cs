@@ -21,4 +21,5 @@ public class HREmployee
     public int? RoleId { get; set; }
     public bool VIPPatientAccess { get; set; }
     public int? DepartmentID { get; set; }
+    public bool IsCRM { get; set; }
 }

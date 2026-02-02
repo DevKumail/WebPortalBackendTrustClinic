@@ -40,6 +40,12 @@ public class JwtTokenService : IJwtTokenService
             new Claim("LastName", user.LastName)
         };
 
+        if (user.EmpId.HasValue)
+            claims.Add(new Claim("EmpId", user.EmpId.Value.ToString()));
+
+        if (user.EmpType.HasValue)
+            claims.Add(new Claim("EmpType", user.EmpType.Value.ToString()));
+
         // Add role claims
         foreach (var role in roles)
         {

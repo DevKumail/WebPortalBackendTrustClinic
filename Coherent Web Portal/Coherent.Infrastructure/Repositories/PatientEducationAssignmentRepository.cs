@@ -15,13 +15,56 @@ public class PatientEducationAssignmentRepository : IPatientEducationAssignmentR
         _connection = connection;
     }
 
-    public async Task<List<PatientEducationAssignmentListDto>> GetByMrNoAsync(string mrNo, bool includeExpired = false)
+    public async Task<(IEnumerable<PatientEducationAssignmentListDto> Assignments, int TotalCount)> GetAssignmentsAsync(
+        string? mrNo,
+        bool includeExpired,
+        int pageNumber,
+        int pageSize)
     {
-        var patientId = await ResolvePatientIdByMrNoAsync(mrNo);
-        if (patientId == null)
-            return new List<PatientEducationAssignmentListDto>();
+        if (pageNumber < 1) pageNumber = 1;
+        if (pageSize < 1) pageSize = 20;
+        pageSize = Math.Min(pageSize, 100);
 
-        var sql = @"
+        int? patientId = null;
+        if (!string.IsNullOrWhiteSpace(mrNo))
+        {
+            patientId = await ResolvePatientIdByMrNoAsync(mrNo);
+            if (patientId == null)
+                return (Enumerable.Empty<PatientEducationAssignmentListDto>(), 0);
+        }
+
+        var whereClauses = new List<string>
+        {
+            "a.IsDeleted = 0",
+            "a.IsActive = 1",
+            "e.IsDeleted = 0",
+            "e.Active = 1",
+            "(@IncludeExpired = 1 OR a.ExpiresAt IS NULL OR a.ExpiresAt > GETDATE())"
+        };
+
+        if (patientId.HasValue)
+            whereClauses.Add("a.PatientId = @PatientId");
+
+        var whereClause = "WHERE " + string.Join(" AND ", whereClauses);
+
+        var parameters = new DynamicParameters();
+        parameters.Add("IncludeExpired", includeExpired ? 1 : 0);
+        parameters.Add("PatientId", patientId);
+
+        var countSql = $@"
+SELECT COUNT(1)
+FROM TPatientEducationAssignment a
+INNER JOIN MPatientEducation e ON a.EducationId = e.EducationId
+INNER JOIN MPatientEducationCategory c ON e.CategoryId = c.CategoryId
+{whereClause};";
+
+        var totalCount = await _connection.ExecuteScalarAsync<int>(countSql, parameters);
+
+        var offset = (pageNumber - 1) * pageSize;
+        parameters.Add("Offset", offset);
+        parameters.Add("PageSize", pageSize);
+
+        var dataSql = $@"
 SELECT
     a.AssignmentId,
     a.EducationId,
@@ -42,20 +85,13 @@ FROM TPatientEducationAssignment a
 LEFT JOIN dbo.Users u ON u.Id = a.PatientId AND u.IsDeleted = 0
 INNER JOIN MPatientEducation e ON a.EducationId = e.EducationId
 INNER JOIN MPatientEducationCategory c ON e.CategoryId = c.CategoryId
-WHERE a.PatientId = @PatientId 
-  AND a.IsDeleted = 0
-  AND a.IsActive = 1
-  AND e.IsDeleted = 0
-  AND e.Active = 1
-  AND (@IncludeExpired = 1 OR a.ExpiresAt IS NULL OR a.ExpiresAt > GETDATE())
-ORDER BY a.AssignedAt DESC";
+{whereClause}
+ORDER BY a.AssignedAt DESC, a.AssignmentId DESC
+OFFSET @Offset ROWS
+FETCH NEXT @PageSize ROWS ONLY;";
 
-        var rows = await _connection.QueryAsync<PatientEducationAssignmentListDto>(sql, new
-        {
-            PatientId = patientId.Value,
-            IncludeExpired = includeExpired ? 1 : 0
-        });
-        return rows.ToList();
+        var rows = await _connection.QueryAsync<PatientEducationAssignmentListDto>(dataSql, parameters);
+        return (rows, totalCount);
     }
 
     public async Task<List<PatientEducationAssignmentListDto>> GetByEducationIdAsync(int educationId)

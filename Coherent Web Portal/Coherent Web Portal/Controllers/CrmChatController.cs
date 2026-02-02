@@ -50,7 +50,7 @@ public class CrmChatController : ControllerBase
         request.SenderType = "Doctor";
         request.ReceiverType = "Patient";
 
-        var (response, isDoctorToPatient) = await _chatRepository.SendMessageAsync(request);
+        var (response, isDoctorToPatient, _) = await _chatRepository.SendMessageAsync(request);
 
         try
         {
@@ -174,4 +174,138 @@ public class CrmChatController : ControllerBase
 
         return Ok(result);
     }
+
+    #region Broadcast Channel Endpoints (Staff: Nurse/Receptionist/IVFLab)
+
+    [HttpPost("broadcast-channels/get-or-create")]
+    [ProducesResponseType(typeof(ChatBroadcastChannelGetOrCreateResponse), 200)]
+    public async Task<IActionResult> GetOrCreateBroadcastChannel([FromBody] ChatBroadcastChannelGetOrCreateRequest request)
+    {
+        var result = await _chatRepository.GetOrCreateBroadcastChannelAsync(request);
+        return Ok(result);
+    }
+
+    [HttpGet("broadcast-channels")]
+    [ProducesResponseType(typeof(List<ChatBroadcastChannelListItemDto>), 200)]
+    public async Task<IActionResult> GetBroadcastChannels([FromQuery] string staffType, [FromQuery] int limit = 50)
+    {
+        var result = await _chatRepository.GetBroadcastChannelsForStaffAsync(staffType, limit);
+        return Ok(result);
+    }
+
+    [HttpGet("broadcast-channels/unread-summary")]
+    [ProducesResponseType(typeof(ChatStaffUnreadSummaryResponse), 200)]
+    public async Task<IActionResult> GetStaffUnreadSummary([FromQuery] string staffType, [FromQuery] int limit = 50)
+    {
+        var result = await _chatRepository.GetStaffUnreadSummaryAsync(staffType, limit);
+        return Ok(result);
+    }
+
+    [HttpPost("broadcast-channels/{crmThreadId}/messages")]
+    [ProducesResponseType(typeof(ChatSendMessageResponse), 200)]
+    public async Task<IActionResult> SendStaffMessage([FromRoute] string crmThreadId, [FromBody] ChatSendMessageRequest request)
+    {
+        if (request.ClientMessageId == Guid.Empty)
+            request.ClientMessageId = Guid.NewGuid();
+
+        request.CrmThreadId = crmThreadId;
+        request.SenderType = "Staff";
+        request.ReceiverType = "Patient";
+
+        var (response, _, isStaffToPatient) = await _chatRepository.SendMessageAsync(request);
+
+        try
+        {
+            await _hub.Clients.Group(crmThreadId).SendAsync("chat.message.created", new
+            {
+                crmThreadId,
+                crmMessageId = response.CrmMessageId,
+                senderType = request.SenderType,
+                senderEmpId = request.SenderEmpId,
+                senderEmpType = request.SenderEmpType,
+                receiverType = request.ReceiverType,
+                receiverMrNo = request.ReceiverMrNo,
+                receiverStaffType = request.ReceiverStaffType,
+                messageType = request.MessageType,
+                content = request.Content,
+                fileUrl = request.FileUrl,
+                fileName = request.FileName,
+                fileSize = request.FileSize,
+                sentAt = request.SentAt == default ? DateTime.UtcNow : request.SentAt
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to broadcast staff chat message via SignalR");
+        }
+
+        if (isStaffToPatient)
+        {
+            try
+            {
+                var conversationId = crmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
+                    ? crmThreadId.Substring("CRM-TH-".Length)
+                    : crmThreadId;
+
+                var webhookPayload = new ChatStaffMessageCreatedWebhook
+                {
+                    CrmThreadId = $"CRM-TH-{conversationId}",
+                    CrmMessageId = response.CrmMessageId,
+                    StaffType = request.ReceiverStaffType ?? "Staff",
+                    SenderEmpId = request.SenderEmpId,
+                    PatientMrNo = request.ReceiverMrNo ?? string.Empty,
+                    MessageType = request.MessageType,
+                    Content = request.Content,
+                    FileUrl = request.FileUrl,
+                    FileName = request.FileName,
+                    FileSize = request.FileSize,
+                    SentAt = request.SentAt == default ? DateTime.UtcNow : request.SentAt
+                };
+
+                var payloadJson = JsonSerializer.Serialize(webhookPayload);
+
+                await _outbox.EnqueueIfNotExistsAsync(
+                    response.CrmMessageId,
+                    webhookPayload.CrmThreadId,
+                    webhookPayload.SenderEmpId?.ToString() ?? string.Empty,
+                    webhookPayload.PatientMrNo,
+                    payloadJson);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to enqueue staff chat webhook outbox");
+            }
+        }
+
+        return Ok(response);
+    }
+
+    [HttpPost("broadcast-channels/{crmThreadId}/mark-read")]
+    [ProducesResponseType(typeof(ChatMarkReadResponse), 200)]
+    public async Task<IActionResult> MarkBroadcastChannelRead(
+        [FromRoute] string crmThreadId,
+        [FromQuery] long empId,
+        [FromQuery] string staffType)
+    {
+        var result = await _chatRepository.MarkThreadAsReadByStaffAsync(crmThreadId, empId, staffType);
+
+        try
+        {
+            await _hub.Clients.Group(crmThreadId).SendAsync("chat.thread.read", new
+            {
+                crmThreadId,
+                empId,
+                staffType,
+                readAtUtc = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to broadcast staff channel read via SignalR");
+        }
+
+        return Ok(result);
+    }
+
+    #endregion
 }

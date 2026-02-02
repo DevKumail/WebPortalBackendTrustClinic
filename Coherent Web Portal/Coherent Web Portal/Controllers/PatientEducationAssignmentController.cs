@@ -53,14 +53,32 @@ public class PatientEducationAssignmentController : ControllerBase
     /// <summary>
     /// Get all education assignments for a patient
     /// </summary>
-    [HttpGet("by-patient/{mrNo}")]
+    [HttpGet("by-patient")]
     [Permission("PatientEducation.Read")]
     public async Task<IActionResult> GetAssignmentsByPatient(
-        [FromRoute] string mrNo,
-        [FromQuery] bool includeExpired = false)
+        [FromQuery] string? mrNo,
+        [FromQuery] bool includeExpired = false,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 20)
     {
-        var assignments = await _assignmentRepository.GetByMrNoAsync(mrNo, includeExpired);
-        return Ok(assignments);
+        if (pageNumber < 1) pageNumber = 1;
+        if (pageSize < 1 || pageSize > 100) pageSize = 20;
+
+        var (assignments, totalCount) = await _assignmentRepository.GetAssignmentsAsync(
+            mrNo,
+            includeExpired,
+            pageNumber,
+            pageSize);
+
+        var response = new PaginatedPatientEducationAssignmentResponse
+        {
+            Assignments = assignments.ToList(),
+            TotalCount = totalCount,
+            PageNumber = pageNumber,
+            PageSize = pageSize
+        };
+
+        return Ok(response);
     }
 
     /// <summary>

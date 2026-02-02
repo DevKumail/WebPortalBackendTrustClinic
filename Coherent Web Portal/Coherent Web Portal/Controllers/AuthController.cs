@@ -63,13 +63,11 @@ public class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
-        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
-        {
+        var username = User.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(username))
             return Unauthorized();
-        }
 
-        var result = await _authService.LogoutAsync(userId, token);
+        var result = await _authService.LogoutAsync(token, username);
 
         if (!result.IsSuccess)
             return BadRequest(new { message = "Logout failed" });
@@ -87,13 +85,16 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> GetCurrentUser()
     {
-        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
-        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
-        {
+        var username = User.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(username))
             return Unauthorized();
-        }
 
-        var user = await _authService.GetCurrentUserAsync(userId);
+        long? empId = null;
+        var empIdClaim = User.FindFirst("EmpId");
+        if (empIdClaim != null && long.TryParse(empIdClaim.Value, out var parsedEmpId))
+            empId = parsedEmpId;
+
+        var user = await _authService.GetCurrentUserAsync(username, empId);
 
         if (user == null)
         {

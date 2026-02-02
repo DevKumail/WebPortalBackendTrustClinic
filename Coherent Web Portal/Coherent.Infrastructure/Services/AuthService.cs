@@ -1,5 +1,6 @@
 using Coherent.Core.DTOs;
 using Coherent.Core.Interfaces;
+using Coherent.Domain.Entities;
 using Coherent.Infrastructure.Data;
 using Coherent.Infrastructure.Repositories;
 using Dapper;
@@ -123,6 +124,8 @@ public class AuthService : IAuthService
             var hrUserDto = new UserDto
             {
                 Id = Guid.NewGuid(),
+                EmpId = employee.EmpId,
+                EmpType = employee.EmpType,
                 Username = employee.UserName ?? request.Username,
                 Email = employee.Email ?? string.Empty,
                 FirstName = employee.FName ?? string.Empty,
@@ -238,13 +241,11 @@ VALUES
         }
     }
 
-    public async Task<(bool IsSuccess, bool AlreadyLoggedOut)> LogoutAsync(Guid userId, string token)
+    public async Task<(bool IsSuccess, bool AlreadyLoggedOut)> LogoutAsync(string token, string username)
     {
         try
         {
             using var connection = _connectionFactory.CreatePrimaryConnection();
-            var userRepository = new UserRepository(connection);
-
             if (string.IsNullOrWhiteSpace(token))
                 return (false, false);
 
@@ -265,56 +266,32 @@ VALUES
                 {
                     // If the session wasn't logged (e.g. missing table row), insert a minimal revoked record to block further usage.
                     await connection.ExecuteAsync(
-                        @"INSERT INTO dbo.SecAuthSession (EmpId, Username, RegCode, TokenHash, TokenLast8, IssuedAt, ExpiresAt, IsLoggedOut, LoggedOutAt)
-                          VALUES (NULL, NULL, NULL, @TokenHash, @TokenLast8, SYSUTCDATETIME(), SYSUTCDATETIME(), 1, SYSUTCDATETIME())",
-                        new { TokenHash = tokenHash, TokenLast8 = tokenLast8 });
+                        @"INSERT INTO dbo.SecAuthSession
+                          (
+                              EmpId, Username, RegCode, TokenHash, TokenLast8,
+                              IssuedAt, ExpiresAt, IsLoggedOut, LoggedOutAt
+                          )
+                          VALUES
+                          (
+                              NULL, @Username, NULL, @TokenHash, @TokenLast8,
+                              SYSUTCDATETIME(), SYSUTCDATETIME(), 1, SYSUTCDATETIME()
+                          )",
+                        new { Username = username, TokenHash = tokenHash, TokenLast8 = tokenLast8 });
                 }
-            }
-            
-            try
-            {
-                await userRepository.UpdateRefreshTokenAsync(userId, string.Empty, DateTime.UtcNow);
-            }
-            catch (Exception ex)
-            {
-                await _auditService.LogActionAsync(
-                    userId, string.Empty, "LOGOUT_REFRESH_TOKEN_CLEAR_FAILED", "User",
-                    userId.ToString(), null, null, string.Empty, string.Empty, "Primary",
-                    "Authentication", "Medium", false, ex.Message);
-
-                var isUsersTableMissing = ex.Message.Contains("Invalid object name", StringComparison.OrdinalIgnoreCase)
-                    && ex.Message.Contains("Users", StringComparison.OrdinalIgnoreCase);
-
-                if (!isUsersTableMissing)
-                    return (false, alreadyLoggedOut);
-            }
-
-            string username = string.Empty;
-            try
-            {
-                var user = await userRepository.GetByIdAsync(userId);
-                username = user?.Username ?? string.Empty;
-            }
-            catch (Exception ex)
-            {
-                await _auditService.LogActionAsync(
-                    userId, string.Empty, "LOGOUT_USER_LOOKUP_FAILED", "User",
-                    userId.ToString(), null, null, string.Empty, string.Empty, "Primary",
-                    "Authentication", "Low", false, ex.Message);
             }
 
             await _auditService.LogActionAsync(
-                userId, username, "LOGOUT", "User",
-                userId.ToString(), null, null, "", "", "Primary",
+                null, username ?? string.Empty, "LOGOUT", "SecAuthSession",
+                null, null, null, "", "", "Primary",
                 "Authentication", "Low", true);
-            
+
             return (true, alreadyLoggedOut);
         }
         catch (Exception ex)
         {
             await _auditService.LogActionAsync(
-                userId, string.Empty, "LOGOUT_ERROR", "User",
-                userId.ToString(), null, null, string.Empty, string.Empty, "Primary",
+                null, username ?? string.Empty, "LOGOUT_ERROR", "SecAuthSession",
+                null, null, null, string.Empty, string.Empty, "Primary",
                 "Authentication", "High", false, ex.Message);
 
             return (false, false);
@@ -327,32 +304,49 @@ VALUES
         return principal != null;
     }
 
-    public async Task<UserDto?> GetCurrentUserAsync(Guid userId)
+    public async Task<UserDto?> GetCurrentUserAsync(string username, long? empId)
     {
         using var connection = _connectionFactory.CreatePrimaryConnection();
-        var userRepository = new UserRepository(connection);
-        
-        var user = await userRepository.GetByIdAsync(userId);
-        if (user == null)
+
+        var hrRepository = new HREmployeeRepository(connection);
+        HREmployee? employee = null;
+        if (empId.HasValue)
+            employee = await hrRepository.GetByEmpIdAsync(empId.Value);
+        if (employee == null && !string.IsNullOrWhiteSpace(username))
+            employee = await hrRepository.GetByUsernameAsync(username);
+
+        if (employee == null)
             return null;
 
-        var roles = (await userRepository.GetUserRolesAsync(user.Id)).ToList();
-        var permissions = (await userRepository.GetUserPermissionsAsync(user.Id)).ToList();
+        var securityRepository = new SecurityRepository(connection);
+        var roles = new List<string>();
+        if (employee.RoleId.HasValue)
+        {
+            var roleName = await securityRepository.GetRoleNameByRoleIdAsync(employee.RoleId.Value);
+            if (!string.IsNullOrWhiteSpace(roleName))
+                roles.Add(roleName);
+        }
+        if (roles.Count == 0)
+            roles.Add("HREmployee");
 
-        return MapToUserDto(user, roles, permissions);
-    }
+        var effectivePermissions = await securityRepository.GetEmployeeEffectivePermissionsByEmpIdAsync(employee.EmpId);
+        var permissions = effectivePermissions
+            .Where(p => p.IsAllowed)
+            .Select(p => p.PermissionKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-    private UserDto MapToUserDto(Domain.Entities.User user, List<string> roles, List<string> permissions)
-    {
         return new UserDto
         {
-            Id = user.Id,
-            Username = user.Username,
-            Email = user.Email,
-            FirstName = user.FirstName,
-            LastName = user.LastName,
-            PhoneNumber = user.PhoneNumber,
-            IsActive = user.IsActive,
+            Id = Guid.NewGuid(),
+            EmpId = employee.EmpId,
+            EmpType = employee.EmpType,
+            Username = employee.UserName ?? username,
+            Email = employee.Email ?? string.Empty,
+            FirstName = employee.FName ?? string.Empty,
+            LastName = employee.LName ?? string.Empty,
+            PhoneNumber = employee.Phone ?? string.Empty,
+            IsActive = employee.Active,
             Roles = roles,
             Permissions = permissions
         };

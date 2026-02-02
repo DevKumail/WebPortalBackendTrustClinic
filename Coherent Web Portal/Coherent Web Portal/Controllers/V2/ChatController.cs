@@ -43,7 +43,7 @@ public class ChatController : ControllerBase
     [ProducesResponseType(typeof(ChatSendMessageResponse), 200)]
     public async Task<IActionResult> SendMessage([FromBody] ChatSendMessageRequest request)
     {
-        var (response, isDoctorToPatient) = await _chatRepository.SendMessageAsync(request);
+        var (response, isDoctorToPatient, isStaffToPatient) = await _chatRepository.SendMessageAsync(request);
 
         try
         {
@@ -54,9 +54,12 @@ public class ChatController : ControllerBase
                 senderType = request.SenderType,
                 senderMrNo = request.SenderMrNo,
                 senderDoctorLicenseNo = request.SenderDoctorLicenseNo,
+                senderEmpId = request.SenderEmpId,
+                senderEmpType = request.SenderEmpType,
                 receiverType = request.ReceiverType,
                 receiverMrNo = request.ReceiverMrNo,
                 receiverDoctorLicenseNo = request.ReceiverDoctorLicenseNo,
+                receiverStaffType = request.ReceiverStaffType,
                 messageType = request.MessageType,
                 content = request.Content,
                 fileUrl = request.FileUrl,
@@ -74,7 +77,6 @@ public class ChatController : ControllerBase
         {
             try
             {
-                // Parse thread id back for payload
                 var conversationId = request.CrmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
                     ? request.CrmThreadId.Substring("CRM-TH-".Length)
                     : request.CrmThreadId;
@@ -105,6 +107,44 @@ public class ChatController : ControllerBase
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to enqueue chat webhook outbox");
+            }
+        }
+
+        if (isStaffToPatient)
+        {
+            try
+            {
+                var conversationId = request.CrmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
+                    ? request.CrmThreadId.Substring("CRM-TH-".Length)
+                    : request.CrmThreadId;
+
+                var webhookPayload = new ChatStaffMessageCreatedWebhook
+                {
+                    CrmThreadId = $"CRM-TH-{conversationId}",
+                    CrmMessageId = response.CrmMessageId,
+                    StaffType = request.ReceiverStaffType ?? "Staff",
+                    SenderEmpId = request.SenderEmpId,
+                    PatientMrNo = request.ReceiverMrNo ?? string.Empty,
+                    MessageType = request.MessageType,
+                    Content = request.Content,
+                    FileUrl = request.FileUrl,
+                    FileName = request.FileName,
+                    FileSize = request.FileSize,
+                    SentAt = request.SentAt == default ? DateTime.UtcNow : request.SentAt
+                };
+
+                var payloadJson = JsonSerializer.Serialize(webhookPayload);
+
+                await _outbox.EnqueueIfNotExistsAsync(
+                    response.CrmMessageId,
+                    webhookPayload.CrmThreadId,
+                    webhookPayload.SenderEmpId?.ToString() ?? string.Empty,
+                    webhookPayload.PatientMrNo,
+                    payloadJson);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to enqueue staff chat webhook outbox");
             }
         }
 
@@ -139,4 +179,56 @@ public class ChatController : ControllerBase
 
         return Ok(result);
     }
+
+    #region Broadcast Channel Endpoints (Staff: Nurse/Receptionist/IVFLab)
+
+    [AllowAnonymous]
+    [HttpPost("broadcast-channels/get-or-create")]
+    [ProducesResponseType(typeof(ChatBroadcastChannelGetOrCreateResponse), 200)]
+    public async Task<IActionResult> GetOrCreateBroadcastChannel([FromBody] ChatBroadcastChannelGetOrCreateRequest request)
+    {
+        var result = await _chatRepository.GetOrCreateBroadcastChannelAsync(request);
+        return Ok(result);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("broadcast-channels")]
+    [ProducesResponseType(typeof(List<ChatBroadcastChannelListItemDto>), 200)]
+    public async Task<IActionResult> GetBroadcastChannels([FromQuery] string staffType, [FromQuery] int limit = 50)
+    {
+        var result = await _chatRepository.GetBroadcastChannelsForStaffAsync(staffType, limit);
+        return Ok(result);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("broadcast-channels/unread-summary")]
+    [ProducesResponseType(typeof(ChatStaffUnreadSummaryResponse), 200)]
+    public async Task<IActionResult> GetStaffUnreadSummary([FromQuery] string staffType, [FromQuery] int limit = 50)
+    {
+        var result = await _chatRepository.GetStaffUnreadSummaryAsync(staffType, limit);
+        return Ok(result);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("threads/{crmThreadId}/messages")]
+    [ProducesResponseType(typeof(List<ChatThreadMessageDto>), 200)]
+    public async Task<IActionResult> GetThreadMessages([FromRoute] string crmThreadId, [FromQuery] int take = 50)
+    {
+        var messages = await _chatRepository.GetThreadMessagesAsync(crmThreadId, take);
+        return Ok(messages);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("broadcast-channels/{crmThreadId}/mark-read")]
+    [ProducesResponseType(typeof(ChatMarkReadResponse), 200)]
+    public async Task<IActionResult> MarkBroadcastChannelRead(
+        [FromRoute] string crmThreadId,
+        [FromQuery] long empId,
+        [FromQuery] string staffType)
+    {
+        var result = await _chatRepository.MarkThreadAsReadByStaffAsync(crmThreadId, empId, staffType);
+        return Ok(result);
+    }
+
+    #endregion
 }

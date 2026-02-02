@@ -53,97 +53,94 @@ public class ChatRepository : IChatRepository
         };
     }
 
-    public async Task<(ChatSendMessageResponse Response, bool IsDoctorToPatient)> SendMessageAsync(ChatSendMessageRequest request)
+    public async Task<(ChatSendMessageResponse Response, bool IsDoctorToPatient, bool IsStaffToPatient)> SendMessageAsync(ChatSendMessageRequest request)
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(request.CrmThreadId))
+                throw new ArgumentException("crmThreadId is required", nameof(request));
 
-        
-        if (string.IsNullOrWhiteSpace(request.CrmThreadId))
-            throw new ArgumentException("crmThreadId is required", nameof(request));
+            if (request.ClientMessageId == Guid.Empty)
+                throw new ArgumentException("clientMessageId is required", nameof(request));
 
-        if (request.ClientMessageId == Guid.Empty)
-            throw new ArgumentException("clientMessageId is required", nameof(request));
+            if (!TryParseConversationId(request.CrmThreadId, out var conversationId))
+                throw new ArgumentException("Invalid crmThreadId", nameof(request));
 
-        if (!TryParseConversationId(request.CrmThreadId, out var conversationId))
-            throw new ArgumentException("Invalid crmThreadId", nameof(request));
+            var senderType = NormalizeUserType(request.SenderType);
+            var receiverType = NormalizeUserType(request.ReceiverType);
 
-        var senderType = NormalizeUserType(request.SenderType);
-        var receiverType = NormalizeUserType(request.ReceiverType);
+            var senderId = await ResolveUserIdAsync(senderType, request.SenderMrNo, request.SenderDoctorLicenseNo, request.SenderEmpId);
 
-        var senderId = await ResolveUserIdAsync(senderType, request.SenderMrNo, request.SenderDoctorLicenseNo);
-        var receiverId = await ResolveUserIdAsync(receiverType, request.ReceiverMrNo, request.ReceiverDoctorLicenseNo);
+            // Idempotency check
+            var existingMessageId = await _connection.QueryFirstOrDefaultAsync<int?>(
+                "SELECT TOP 1 MessageId FROM dbo.MChatMessages WHERE ConversationId = @ConversationId AND ClientMessageId = @ClientMessageId",
+                new { ConversationId = conversationId, ClientMessageId = request.ClientMessageId });
 
-        // Idempotency check
-        var existingMessageId = await _connection.QueryFirstOrDefaultAsync<int?>(
-            "SELECT TOP 1 MessageId FROM dbo.MChatMessages WHERE ConversationId = @ConversationId AND ClientMessageId = @ClientMessageId",
-            new { ConversationId = conversationId, ClientMessageId = request.ClientMessageId });
+            if (existingMessageId.HasValue)
+            {
+                return (
+                    new ChatSendMessageResponse
+                    {
+                        CrmMessageId = $"CRM-MSG-{existingMessageId.Value}",
+                        CrmThreadId = request.CrmThreadId,
+                        Status = "Accepted",
+                        ServerReceivedAt = DateTime.UtcNow
+                    },
+                    IsDoctorToPatient: senderType == "Doctor" && receiverType == "Patient",
+                    IsStaffToPatient: senderType == "Staff" && receiverType == "Patient"
+                );
+            }
 
-        if (existingMessageId.HasValue)
-        {
+            var messageType = string.IsNullOrWhiteSpace(request.MessageType) ? "Text" : request.MessageType;
+
+            // Insert message
+            var insertSql = @"
+                INSERT INTO dbo.MChatMessages
+                    (ConversationId, SenderId, SenderType, MessageType, Content, FileUrl, FileName, FileSize, SentAt, IsDelivered, IsRead, IsDeleted, ClientMessageId)
+                VALUES
+                    (@ConversationId, @SenderId, @SenderType, @MessageType, @Content, @FileUrl, @FileName, @FileSize, @SentAt, 0, 0, 0, @ClientMessageId);
+
+                SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+            var messageId = await _connection.QuerySingleAsync<int>(insertSql, new
+            {
+                ConversationId = conversationId,
+                SenderId = senderId,
+                SenderType = senderType,
+                MessageType = messageType,
+                Content = request.Content,
+                FileUrl = request.FileUrl,
+                FileName = request.FileName,
+                FileSize = request.FileSize,
+                SentAt = request.SentAt == default ? DateTime.UtcNow : request.SentAt,
+                ClientMessageId = request.ClientMessageId
+            });
+
+            // Update conversation last message
+            await _connection.ExecuteAsync(
+                "UPDATE dbo.MConversations SET LastMessageAt = @Now, LastMessage = @LastMessage WHERE ConversationId = @ConversationId",
+                new
+                {
+                    Now = DateTime.UtcNow,
+                    LastMessage = BuildLastMessage(messageType, request.Content, request.FileName),
+                    ConversationId = conversationId
+                });
+
             return (
                 new ChatSendMessageResponse
                 {
-                    CrmMessageId = $"CRM-MSG-{existingMessageId.Value}",
+                    CrmMessageId = $"CRM-MSG-{messageId}",
                     CrmThreadId = request.CrmThreadId,
                     Status = "Accepted",
                     ServerReceivedAt = DateTime.UtcNow
                 },
-                IsDoctorToPatient: senderType == "Doctor" && receiverType == "Patient"
+                IsDoctorToPatient: senderType == "Doctor" && receiverType == "Patient",
+                IsStaffToPatient: senderType == "Staff" && receiverType == "Patient"
             );
-        }
-
-        var messageType = string.IsNullOrWhiteSpace(request.MessageType) ? "Text" : request.MessageType;
-
-        // Insert message
-        var insertSql = @"
-            INSERT INTO dbo.MChatMessages
-                (ConversationId, SenderId, SenderType, MessageType, Content, FileUrl, FileName, FileSize, SentAt, IsDelivered, IsRead, IsDeleted, ClientMessageId)
-            VALUES
-                (@ConversationId, @SenderId, @SenderType, @MessageType, @Content, @FileUrl, @FileName, @FileSize, @SentAt, 0, 0, 0, @ClientMessageId);
-
-            SELECT CAST(SCOPE_IDENTITY() AS INT);";
-
-        var messageId = await _connection.QuerySingleAsync<int>(insertSql, new
-        {
-            ConversationId = conversationId,
-            SenderId = senderId,
-            SenderType = senderType,
-            MessageType = messageType,
-            Content = request.Content,
-            FileUrl = request.FileUrl,
-            FileName = request.FileName,
-            FileSize = request.FileSize,
-            SentAt = request.SentAt == default ? DateTime.UtcNow : request.SentAt,
-            ClientMessageId = request.ClientMessageId
-        });
-
-        // Update conversation last message
-        await _connection.ExecuteAsync(
-            "UPDATE dbo.MConversations SET LastMessageAt = @Now, LastMessage = @LastMessage WHERE ConversationId = @ConversationId",
-            new
-            {
-                Now = DateTime.UtcNow,
-                LastMessage = BuildLastMessage(messageType, request.Content, request.FileName),
-                ConversationId = conversationId
-            });
-
-        return (
-            new ChatSendMessageResponse
-            {
-                CrmMessageId = $"CRM-MSG-{messageId}",
-                CrmThreadId = request.CrmThreadId,
-                Status = "Accepted",
-                ServerReceivedAt = DateTime.UtcNow
-            },
-            IsDoctorToPatient: senderType == "Doctor" && receiverType == "Patient"
-        );
-
         }
         catch (Exception ex)
         {
-
-            throw ex;
+            throw;
         }
     }
 
@@ -490,7 +487,213 @@ ORDER BY COALESCE(c.LastMessageAt, '1900-01-01') DESC, c.ConversationId DESC;";
         };
     }
 
-    private async Task<int> ResolveUserIdAsync(string userType, string? mrNo, string? licenceNo)
+    public async Task<ChatBroadcastChannelGetOrCreateResponse> GetOrCreateBroadcastChannelAsync(ChatBroadcastChannelGetOrCreateRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.PatientMrNo))
+            throw new ArgumentException("patientMrNo is required", nameof(request));
+
+        if (string.IsNullOrWhiteSpace(request.StaffType))
+            throw new ArgumentException("staffType is required", nameof(request));
+
+        var validStaffTypes = new[] { "Nurse", "Receptionist", "IVFLab" };
+        if (!validStaffTypes.Contains(request.StaffType, StringComparer.OrdinalIgnoreCase))
+            throw new ArgumentException($"staffType must be one of: {string.Join(", ", validStaffTypes)}", nameof(request));
+
+        var patientId = await _connection.QueryFirstOrDefaultAsync<int?>(
+            "SELECT TOP 1 Id FROM dbo.Users WHERE MRNO = @MRNO AND IsDeleted = 0",
+            new { MRNO = request.PatientMrNo });
+
+        if (patientId == null)
+            throw new InvalidOperationException($"Patient not found for MRNO {request.PatientMrNo}");
+
+        // Call stored procedure to get or create broadcast channel
+        var result = await _connection.QueryFirstOrDefaultAsync<dynamic>(
+            "EXEC dbo.SP_CreateOrGetBroadcastChannel @PatientUserId, @StaffType",
+            new { PatientUserId = patientId.Value, StaffType = request.StaffType });
+
+        if (result == null || result.ConversationId <= 0)
+            throw new InvalidOperationException("Failed to create or get broadcast channel");
+
+        return new ChatBroadcastChannelGetOrCreateResponse
+        {
+            CrmThreadId = $"CRM-TH-{result.ConversationId}",
+            ChannelType = "Broadcast",
+            PatientMrNo = request.PatientMrNo,
+            StaffType = request.StaffType,
+            ChannelTitle = result.ChannelTitle
+        };
+    }
+
+    public async Task<List<ChatBroadcastChannelListItemDto>> GetBroadcastChannelsForStaffAsync(string staffType, int limit = 50)
+    {
+        if (string.IsNullOrWhiteSpace(staffType))
+            throw new ArgumentException("staffType is required", nameof(staffType));
+
+        if (limit <= 0)
+            limit = 50;
+
+        limit = Math.Min(limit, 200);
+
+        var channelTitle = $"{staffType} Support Channel";
+
+        var sql = @"
+            SELECT TOP (@Limit)
+                c.ConversationId,
+                c.Title AS ChannelTitle,
+                c.LastMessageAt,
+                c.LastMessage AS LastMessagePreview,
+                u.MRNO AS PatientMrNo,
+                COALESCE(NULLIF(u.FullName, ''), NULLIF(u.MRNO, ''), CAST(u.Id AS NVARCHAR(50))) AS PatientName,
+                (
+                    SELECT COUNT(1)
+                    FROM dbo.MChatMessages m
+                    WHERE m.ConversationId = c.ConversationId
+                      AND m.SenderType = 'Patient'
+                      AND m.IsRead = 0
+                      AND m.IsDeleted = 0
+                ) AS UnreadCount
+            FROM dbo.MConversations c
+            INNER JOIN dbo.MConversationParticipants cp
+                ON cp.ConversationId = c.ConversationId
+               AND cp.UserType = 'Patient'
+            INNER JOIN dbo.Users u
+                ON u.Id = cp.UserId
+            WHERE c.ConversationType = 'Support'
+              AND c.Title = @ChannelTitle
+              AND c.IsActive = 1
+            ORDER BY COALESCE(c.LastMessageAt, '1900-01-01') DESC, c.ConversationId DESC";
+
+        var rows = await _connection.QueryAsync<dynamic>(sql, new { ChannelTitle = channelTitle, Limit = limit });
+
+        return rows.Select(row => new ChatBroadcastChannelListItemDto
+        {
+            ConversationId = (int)row.ConversationId,
+            CrmThreadId = $"CRM-TH-{row.ConversationId}",
+            ChannelType = "Broadcast",
+            StaffType = staffType,
+            PatientMrNo = row.PatientMrNo,
+            PatientName = row.PatientName,
+            LastMessageAt = row.LastMessageAt,
+            LastMessagePreview = row.LastMessagePreview,
+            UnreadCount = (int)(row.UnreadCount ?? 0)
+        }).ToList();
+    }
+
+    public async Task<ChatStaffUnreadSummaryResponse> GetStaffUnreadSummaryAsync(string staffType, int limit = 50)
+    {
+        if (string.IsNullOrWhiteSpace(staffType))
+            throw new ArgumentException("staffType is required", nameof(staffType));
+
+        if (limit <= 0)
+            limit = 50;
+
+        var channelTitle = $"{staffType} Support Channel";
+
+        var sql = @"
+            SELECT TOP (@Limit)
+                c.ConversationId,
+                u.MRNO AS PatientMrNo,
+                COALESCE(NULLIF(u.FullName, ''), NULLIF(u.MRNO, ''), CAST(u.Id AS NVARCHAR(50))) AS PatientName,
+                c.LastMessageAt,
+                c.LastMessage AS LastMessagePreview,
+                (
+                    SELECT COUNT(1)
+                    FROM dbo.MChatMessages m
+                    WHERE m.ConversationId = c.ConversationId
+                      AND m.SenderType = 'Patient'
+                      AND m.IsRead = 0
+                      AND m.IsDeleted = 0
+                ) AS UnreadCount
+            FROM dbo.MConversations c
+            INNER JOIN dbo.MConversationParticipants cp
+                ON cp.ConversationId = c.ConversationId
+               AND cp.UserType = 'Patient'
+            INNER JOIN dbo.Users u
+                ON u.Id = cp.UserId
+            WHERE c.ConversationType = 'Support'
+              AND c.Title = @ChannelTitle
+              AND c.IsActive = 1
+              AND EXISTS (
+                  SELECT 1 FROM dbo.MChatMessages m2
+                  WHERE m2.ConversationId = c.ConversationId
+                    AND m2.SenderType = 'Patient'
+                    AND m2.IsRead = 0
+                    AND m2.IsDeleted = 0
+              )
+            ORDER BY c.LastMessageAt DESC";
+
+        var rows = await _connection.QueryAsync<dynamic>(sql, new { ChannelTitle = channelTitle, Limit = limit });
+
+        var response = new ChatStaffUnreadSummaryResponse
+        {
+            StaffType = staffType
+        };
+
+        foreach (var row in rows)
+        {
+            var item = new ChatBroadcastChannelListItemDto
+            {
+                ConversationId = (int)row.ConversationId,
+                CrmThreadId = $"CRM-TH-{row.ConversationId}",
+                ChannelType = "Broadcast",
+                StaffType = staffType,
+                PatientMrNo = row.PatientMrNo,
+                PatientName = row.PatientName,
+                LastMessageAt = row.LastMessageAt,
+                LastMessagePreview = row.LastMessagePreview,
+                UnreadCount = (int)(row.UnreadCount ?? 0)
+            };
+
+            response.Channels.Add(item);
+            response.TotalUnread += item.UnreadCount;
+        }
+
+        return response;
+    }
+
+    public async Task<ChatMarkReadResponse> MarkThreadAsReadByStaffAsync(string crmThreadId, long empId, string staffType)
+    {
+        if (string.IsNullOrWhiteSpace(staffType))
+            throw new ArgumentException("staffType is required", nameof(staffType));
+
+        if (!TryParseConversationId(crmThreadId, out var conversationId))
+            throw new ArgumentException("Invalid crmThreadId", nameof(crmThreadId));
+
+        var channelTitle = $"{staffType} Support Channel";
+
+        // Verify this is a valid broadcast channel for the staff type
+        var isValidChannel = await _connection.QueryFirstOrDefaultAsync<int>(@"
+            SELECT CASE WHEN EXISTS (
+                SELECT 1
+                FROM dbo.MConversations c
+                WHERE c.ConversationId = @ConversationId
+                  AND c.ConversationType = 'Support'
+                  AND c.Title = @ChannelTitle
+                  AND c.IsActive = 1
+            ) THEN 1 ELSE 0 END",
+            new { ConversationId = conversationId, ChannelTitle = channelTitle });
+
+        if (isValidChannel != 1)
+            throw new InvalidOperationException("This is not a valid broadcast channel for the specified staff type");
+
+        var affected = await _connection.ExecuteAsync(@"
+            UPDATE dbo.MChatMessages
+            SET IsRead = 1
+            WHERE ConversationId = @ConversationId
+              AND SenderType = 'Patient'
+              AND IsRead = 0
+              AND IsDeleted = 0",
+            new { ConversationId = conversationId });
+
+        return new ChatMarkReadResponse
+        {
+            CrmThreadId = $"CRM-TH-{conversationId}",
+            MarkedReadCount = affected,
+            ServerProcessedAt = DateTime.UtcNow
+        };
+    }
+
+    private async Task<int> ResolveUserIdAsync(string userType, string? mrNo, string? licenceNo, long? empId = null)
     {
         if (userType == "Patient")
         {
@@ -520,6 +723,16 @@ ORDER BY COALESCE(c.LastMessageAt, '1900-01-01') DESC, c.ConversationId DESC;";
                 throw new InvalidOperationException($"Doctor not found for LicenceNo {licenceNo}");
 
             return doctorId.Value;
+        }
+
+        if (userType == "Staff")
+        {
+            if (!empId.HasValue)
+                throw new ArgumentException("senderEmpId is required for Staff");
+
+            // For Staff, we use EmpId directly as SenderId
+            // Note: Staff members are identified by their HREmployee.EmpId
+            return (int)empId.Value;
         }
 
         throw new ArgumentException($"Unsupported user type: {userType}");

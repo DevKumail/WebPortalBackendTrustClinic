@@ -5,7 +5,11 @@ namespace Coherent.Core.Interfaces;
 
 public interface IPatientEducationAssignmentRepository
 {
-    Task<List<PatientEducationAssignmentListDto>> GetByMrNoAsync(string mrNo, bool includeExpired = false);
+    Task<(IEnumerable<PatientEducationAssignmentListDto> Assignments, int TotalCount)> GetAssignmentsAsync(
+        string? mrNo,
+        bool includeExpired,
+        int pageNumber,
+        int pageSize);
     Task<List<PatientEducationAssignmentListDto>> GetByEducationIdAsync(int educationId);
     Task<PatientEducationAssignmentDetailDto?> GetByIdAsync(int assignmentId);
     Task<TPatientEducationAssignment?> GetAssignmentAsync(int patientId, int educationId);
