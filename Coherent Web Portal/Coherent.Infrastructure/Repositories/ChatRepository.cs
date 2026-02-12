@@ -66,6 +66,12 @@ public class ChatRepository : IChatRepository
             if (!TryParseConversationId(request.CrmThreadId, out var conversationId))
                 throw new ArgumentException("Invalid crmThreadId", nameof(request));
 
+            // Validate messageType - must be one of: text, image, file, audio
+            var validMessageTypes = new[] { "text", "image", "file", "audio" };
+            var messageType = string.IsNullOrWhiteSpace(request.MessageType) ? "text" : request.MessageType.ToLower();
+            if (!validMessageTypes.Contains(messageType))
+                throw new ArgumentException($"Invalid messageType '{request.MessageType}'. Must be one of: text, image, file, audio", nameof(request));
+
             var senderType = NormalizeUserType(request.SenderType);
             var receiverType = NormalizeUserType(request.ReceiverType);
 
@@ -90,8 +96,6 @@ public class ChatRepository : IChatRepository
                     IsStaffToPatient: senderType == "Staff" && receiverType == "Patient"
                 );
             }
-
-            var messageType = string.IsNullOrWhiteSpace(request.MessageType) ? "Text" : request.MessageType;
 
             // Insert message
             var insertSql = @"

@@ -1,6 +1,5 @@
 using Coherent.Core.DTOs;
-using Coherent.Infrastructure.Data;
-using Coherent.Infrastructure.Repositories;
+using Coherent.Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,12 +10,12 @@ namespace Coherent.Web.Portal.Controllers;
 [Authorize]
 public class CRMUserController : ControllerBase
 {
-    private readonly IDatabaseConnectionFactory _connectionFactory;
+    private readonly ICRMUserRepository _repository;
     private readonly ILogger<CRMUserController> _logger;
 
-    public CRMUserController(IDatabaseConnectionFactory connectionFactory, ILogger<CRMUserController> logger)
+    public CRMUserController(ICRMUserRepository repository, ILogger<CRMUserController> logger)
     {
-        _connectionFactory = connectionFactory;
+        _repository = repository;
         _logger = logger;
     }
 
@@ -24,78 +23,73 @@ public class CRMUserController : ControllerBase
     [ProducesResponseType(typeof(CRMUserListResponse), 200)]
     public async Task<IActionResult> GetCRMUsers([FromQuery] int? empType, [FromQuery] bool? isCRM, [FromQuery] int limit = 100)
     {
-        using var connection = _connectionFactory.CreatePrimaryConnection();
-        var repository = new HREmployeeRepository(connection);
-
-        var employees = await repository.GetCRMUsersAsync(empType, isCRM, limit);
-
-        var users = employees.Select(e => new CRMUserDto
+        try
         {
-            EmpId = e.EmpId,
-            FullName = $"{e.FName} {e.LName}".Trim(),
-            FName = e.FName,
-            LName = e.LName,
-            Email = e.Email,
-            Phone = e.Phone,
-            UserName = e.UserName,
-            EmpType = e.EmpType,
-            EmpTypeName = GetEmpTypeName(e.EmpType),
-            Speciality = e.Speciality,
-            DepartmentID = e.DepartmentID,
-            IsCRM = e.IsCRM,
-            Active = e.Active
-        }).ToList();
-
-        return Ok(new CRMUserListResponse
+            var result = await _repository.GetCRMUsersAsync(empType, isCRM, limit);
+            return Ok(result);
+        }
+        catch (Exception ex)
         {
-            Users = users,
-            TotalCount = users.Count
-        });
+            _logger.LogError(ex, "Error fetching CRM users. EmpType={EmpType}, IsCRM={IsCRM}, Limit={Limit}", empType, isCRM, limit);
+            return StatusCode(500, new { success = false, message = "An error occurred while fetching CRM users." });
+        }
     }
 
     [HttpPut("{empId}/is-crm")]
     [ProducesResponseType(typeof(UpdateIsCRMResponse), 200)]
     public async Task<IActionResult> UpdateIsCRM([FromRoute] long empId, [FromBody] UpdateIsCRMRequest request)
     {
-        request.EmpId = empId;
-
-        using var connection = _connectionFactory.CreatePrimaryConnection();
-        var repository = new HREmployeeRepository(connection);
-
-        var success = await repository.UpdateIsCRMAsync(request.EmpId, request.IsCRM);
-
-        return Ok(new UpdateIsCRMResponse
+        try
         {
-            Success = success,
-            Message = success ? "IsCRM updated successfully" : "Employee not found",
-            AffectedCount = success ? 1 : 0
-        });
+            var result = await _repository.UpdateIsCRMAsync(empId, request.IsCRM);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating IsCRM for EmpId={EmpId}", empId);
+            return StatusCode(500, new UpdateIsCRMResponse { Success = false, Message = "An error occurred while updating CRM status." });
+        }
     }
 
     [HttpPost("bulk-update-is-crm")]
     [ProducesResponseType(typeof(UpdateIsCRMResponse), 200)]
     public async Task<IActionResult> BulkUpdateIsCRM([FromBody] BulkUpdateIsCRMRequest request)
     {
-        if (request.EmpIds == null || request.EmpIds.Count == 0)
+        try
         {
-            return BadRequest(new UpdateIsCRMResponse
+            if (request.EmpIds == null || request.EmpIds.Count == 0)
             {
-                Success = false,
-                Message = "No employee IDs provided"
-            });
+                return BadRequest(new UpdateIsCRMResponse
+                {
+                    Success = false,
+                    Message = "No employee IDs provided"
+                });
+            }
+
+            var result = await _repository.BulkUpdateIsCRMAsync(request.EmpIds, request.IsCRM);
+            return Ok(result);
         }
-
-        using var connection = _connectionFactory.CreatePrimaryConnection();
-        var repository = new HREmployeeRepository(connection);
-
-        var affected = await repository.BulkUpdateIsCRMAsync(request.EmpIds, request.IsCRM);
-
-        return Ok(new UpdateIsCRMResponse
+        catch (Exception ex)
         {
-            Success = affected > 0,
-            Message = $"Updated {affected} employees",
-            AffectedCount = affected
-        });
+            _logger.LogError(ex, "Error bulk updating IsCRM for {Count} employees", request.EmpIds?.Count ?? 0);
+            return StatusCode(500, new UpdateIsCRMResponse { Success = false, Message = "An error occurred while bulk updating CRM status." });
+        }
+    }
+
+    [HttpPut("{empId}/role")]
+    [ProducesResponseType(typeof(UpdateRoleIdResponse), 200)]
+    public async Task<IActionResult> UpdateRoleId([FromRoute] long empId, [FromBody] UpdateRoleIdRequest request)
+    {
+        try
+        {
+            var result = await _repository.UpdateRoleIdAsync(empId, request.RoleId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating RoleId for EmpId={EmpId}", empId);
+            return StatusCode(500, new UpdateRoleIdResponse { Success = false, Message = "An error occurred while updating role." });
+        }
     }
 
     [HttpGet("emp-types")]
@@ -112,14 +106,4 @@ public class CRMUserController : ControllerBase
         };
         return Ok(empTypes);
     }
-
-    private static string GetEmpTypeName(int empType) => empType switch
-    {
-        1 => "Doctor/Provider",
-        2 => "Nurse",
-        3 => "Receptionist",
-        4 => "IVFLab",
-        5 => "Admin",
-        _ => "Unknown"
-    };
 }

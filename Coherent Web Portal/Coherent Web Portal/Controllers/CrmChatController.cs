@@ -1,6 +1,7 @@
 using Asp.Versioning;
 using Coherent.Core.DTOs;
 using Coherent.Core.Interfaces;
+using Coherent.Infrastructure.Authorization;
 using Coherent.Web.Portal.Hubs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -33,6 +34,7 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpPost("threads/get-or-create")]
+    [Permission("Chat.Read")]
     [ProducesResponseType(typeof(ChatThreadGetOrCreateResponse), 200)]
     public async Task<IActionResult> GetOrCreateThread([FromBody] ChatThreadGetOrCreateRequest request)
     {
@@ -41,9 +43,19 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpPost("messages")]
+    [Permission("Chat.Write")]
     [ProducesResponseType(typeof(ChatSendMessageResponse), 200)]
     public async Task<IActionResult> SendDoctorMessage([FromBody] ChatSendMessageRequest request)
     {
+        if (!string.IsNullOrWhiteSpace(request.FileUrl) &&
+            !string.Equals(request.MessageType, "Text", StringComparison.OrdinalIgnoreCase))
+        {
+            var hasAttachmentPerm = User.Claims
+                .Any(c => c.Type == "Permission" && c.Value == "Chat.SendAttachment");
+            if (!hasAttachmentPerm)
+                return StatusCode(403, new { success = false, message = "You do not have permission to send attachments." });
+        }
+
         if (request.ClientMessageId == Guid.Empty)
             request.ClientMessageId = Guid.NewGuid();
 
@@ -118,6 +130,7 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpGet("unread-summary")]
+    [Permission("Chat.Read")]
     [ProducesResponseType(typeof(ChatDoctorUnreadSummaryResponse), 200)]
     public async Task<IActionResult> GetUnreadSummary([FromQuery] string doctorLicenseNo, [FromQuery] int limit = 50)
     {
@@ -126,6 +139,7 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpGet("conversations")]
+    [Permission("Chat.Read")]
     [ProducesResponseType(typeof(ChatConversationListResponse), 200)]
     public async Task<IActionResult> GetConversations([FromQuery] string? doctorLicenseNo, [FromQuery] string? patientMrNo, [FromQuery] int limit = 50)
     {
@@ -145,6 +159,7 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpGet("threads/{crmThreadId}/messages")]
+    [Permission("Chat.Read")]
     [ProducesResponseType(typeof(List<ChatThreadMessageDto>), 200)]
     public async Task<IActionResult> GetThreadMessages([FromRoute] string crmThreadId, [FromQuery] int take = 50)
     {
@@ -153,6 +168,7 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpPost("threads/{crmThreadId}/mark-read")]
+    [Permission("Chat.Write")]
     [ProducesResponseType(typeof(ChatMarkReadResponse), 200)]
     public async Task<IActionResult> MarkThreadRead([FromRoute] string crmThreadId, [FromQuery] string doctorLicenseNo)
     {
@@ -178,6 +194,7 @@ public class CrmChatController : ControllerBase
     #region Broadcast Channel Endpoints (Staff: Nurse/Receptionist/IVFLab)
 
     [HttpPost("broadcast-channels/get-or-create")]
+    [Permission("Chat.BroadcastRead")]
     [ProducesResponseType(typeof(ChatBroadcastChannelGetOrCreateResponse), 200)]
     public async Task<IActionResult> GetOrCreateBroadcastChannel([FromBody] ChatBroadcastChannelGetOrCreateRequest request)
     {
@@ -186,6 +203,7 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpGet("broadcast-channels")]
+    [Permission("Chat.BroadcastRead")]
     [ProducesResponseType(typeof(List<ChatBroadcastChannelListItemDto>), 200)]
     public async Task<IActionResult> GetBroadcastChannels([FromQuery] string staffType, [FromQuery] int limit = 50)
     {
@@ -194,6 +212,7 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpGet("broadcast-channels/unread-summary")]
+    [Permission("Chat.BroadcastRead")]
     [ProducesResponseType(typeof(ChatStaffUnreadSummaryResponse), 200)]
     public async Task<IActionResult> GetStaffUnreadSummary([FromQuery] string staffType, [FromQuery] int limit = 50)
     {
@@ -202,9 +221,19 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpPost("broadcast-channels/{crmThreadId}/messages")]
+    [Permission("Chat.BroadcastWrite")]
     [ProducesResponseType(typeof(ChatSendMessageResponse), 200)]
     public async Task<IActionResult> SendStaffMessage([FromRoute] string crmThreadId, [FromBody] ChatSendMessageRequest request)
     {
+        if (!string.IsNullOrWhiteSpace(request.FileUrl) &&
+            !string.Equals(request.MessageType, "Text", StringComparison.OrdinalIgnoreCase))
+        {
+            var hasAttachmentPerm = User.Claims
+                .Any(c => c.Type == "Permission" && c.Value == "Chat.SendAttachment");
+            if (!hasAttachmentPerm)
+                return StatusCode(403, new { success = false, message = "You do not have permission to send attachments." });
+        }
+
         if (request.ClientMessageId == Guid.Empty)
             request.ClientMessageId = Guid.NewGuid();
 
@@ -281,6 +310,7 @@ public class CrmChatController : ControllerBase
     }
 
     [HttpPost("broadcast-channels/{crmThreadId}/mark-read")]
+    [Permission("Chat.BroadcastWrite")]
     [ProducesResponseType(typeof(ChatMarkReadResponse), 200)]
     public async Task<IActionResult> MarkBroadcastChannelRead(
         [FromRoute] string crmThreadId,

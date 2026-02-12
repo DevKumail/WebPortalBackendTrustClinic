@@ -301,7 +301,8 @@ builder.Services.AddScoped<ISecurityRepository>(provider =>
 {
     var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
     var connection = factory.CreatePrimaryConnection();
-    return new Coherent.Infrastructure.Repositories.SecurityRepository(connection);
+    var logger = provider.GetRequiredService<ILogger<Coherent.Infrastructure.Repositories.SecurityRepository>>();
+    return new Coherent.Infrastructure.Repositories.SecurityRepository(connection, logger);
 });
 
 // Register Patient Repository
@@ -417,6 +418,9 @@ builder.Services.AddScoped<IPatientHealthRepository>(provider =>
     var connection = factory.CreatePrimaryConnection();
     return new Coherent.Infrastructure.Repositories.PatientHealthRepository(connection);
 });
+
+// Register CRM User Repository (uses primary database - UEMedical_For_R&D)
+builder.Services.AddScoped<ICRMUserRepository, Coherent.Infrastructure.Repositories.CRMUserRepository>();
 
 // Health checks
 builder.Services.AddHealthChecks();

@@ -22,6 +22,8 @@ public class CRMUserDto
     public int? DepartmentID { get; set; }
     public bool IsCRM { get; set; }
     public bool Active { get; set; }
+    public int? RoleId { get; set; }
+    public string? RoleName { get; set; }
 }
 
 public class CRMUserListResponse
@@ -47,4 +49,15 @@ public class UpdateIsCRMResponse
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
     public int AffectedCount { get; set; }
+}
+
+public class UpdateRoleIdRequest
+{
+    public int? RoleId { get; set; }
+}
+
+public class UpdateRoleIdResponse
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
 }

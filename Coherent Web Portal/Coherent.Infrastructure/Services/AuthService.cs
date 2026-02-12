@@ -5,6 +5,7 @@ using Coherent.Infrastructure.Data;
 using Coherent.Infrastructure.Repositories;
 using Dapper;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -20,6 +21,7 @@ public class AuthService : IAuthService
     private readonly IEncryptionService _encryptionService;
     private readonly IAuditService _auditService;
     private readonly IConfiguration _configuration;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly int _refreshTokenExpiryDays;
 
     public AuthService(
@@ -27,13 +29,15 @@ public class AuthService : IAuthService
         IJwtTokenService jwtTokenService,
         IEncryptionService encryptionService,
         IAuditService auditService,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILoggerFactory loggerFactory)
     {
         _connectionFactory = connectionFactory;
         _jwtTokenService = jwtTokenService;
         _encryptionService = encryptionService;
         _auditService = auditService;
         _configuration = configuration;
+        _loggerFactory = loggerFactory;
         _refreshTokenExpiryDays = int.Parse(configuration["Jwt:RefreshTokenExpiryDays"] ?? "7");
     }
 
@@ -121,6 +125,20 @@ public class AuthService : IAuthService
                 };
             }
 
+            if (!employee.IsCRM)
+            {
+                await _auditService.LogActionAsync(
+                    null, request.Username, "LOGIN_FAILED_HR", "HREmployee",
+                    employee.EmpId.ToString(), null, null, ipAddress, userAgent,
+                    "Primary", "Authentication", "Medium", false, "CRM access not enabled for this employee");
+
+                return new AuthResult
+                {
+                    IsSuccess = false,
+                    Message = "CRM access is not enabled for your account. Please contact your administrator."
+                };
+            }
+
             var hrUserDto = new UserDto
             {
                 Id = Guid.NewGuid(),
@@ -132,11 +150,12 @@ public class AuthService : IAuthService
                 LastName = employee.LName ?? string.Empty,
                 PhoneNumber = employee.Phone ?? string.Empty,
                 IsActive = employee.Active,
+                IsCRM = employee.IsCRM,
                 Roles = new List<string>(),
                 Permissions = new List<string>()
             };
 
-            var securityRepository = new SecurityRepository(connection);
+            var securityRepository = new SecurityRepository(connection, _loggerFactory.CreateLogger<SecurityRepository>());
 
             if (employee.RoleId.HasValue)
             {
@@ -318,7 +337,7 @@ VALUES
         if (employee == null)
             return null;
 
-        var securityRepository = new SecurityRepository(connection);
+        var securityRepository = new SecurityRepository(connection, _loggerFactory.CreateLogger<SecurityRepository>());
         var roles = new List<string>();
         if (employee.RoleId.HasValue)
         {
@@ -347,6 +366,7 @@ VALUES
             LastName = employee.LName ?? string.Empty,
             PhoneNumber = employee.Phone ?? string.Empty,
             IsActive = employee.Active,
+            IsCRM = employee.IsCRM,
             Roles = roles,
             Permissions = permissions
         };

@@ -43,6 +43,10 @@ public class ChatController : ControllerBase
     [ProducesResponseType(typeof(ChatSendMessageResponse), 200)]
     public async Task<IActionResult> SendMessage([FromBody] ChatSendMessageRequest request)
     {
+        try
+        {
+
+    
         var (response, isDoctorToPatient, isStaffToPatient) = await _chatRepository.SendMessageAsync(request);
 
         try
@@ -149,6 +153,12 @@ public class ChatController : ControllerBase
         }
 
         return Ok(response);
+        }
+        catch (Exception ex)
+        {
+
+            throw ex;
+        }
     }
 
     [AllowAnonymous]

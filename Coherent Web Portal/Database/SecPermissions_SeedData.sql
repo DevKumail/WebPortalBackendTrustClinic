@@ -19,7 +19,17 @@ FROM (VALUES
     ('PatientEducation.Read', 'PatientEducation', 'View patient education content'),
     ('PatientEducation.Manage', 'PatientEducation', 'Create/update/delete patient education content'),
     ('Promotions.Read', 'Promotions', 'View promotions/banners'),
-    ('Promotions.Manage', 'Promotions', 'Create/update/delete promotions/banners')
+    ('Promotions.Manage', 'Promotions', 'Create/update/delete promotions/banners'),
+    ('Patients.Read', 'Patients', 'View patient records'),
+    ('FacilityServices.Read', 'CRM', 'View facility services'),
+    ('FacilityServices.Manage', 'CRM', 'Create/update facility services'),
+    ('Specialities.Read', 'CRM', 'View specialities'),
+    ('Specialities.Manage', 'CRM', 'Create/update specialities'),
+    ('Chat.Read', 'Chat', 'View chat conversations and messages'),
+    ('Chat.Write', 'Chat', 'Send chat messages to patients'),
+    ('Chat.SendAttachment', 'Chat', 'Send file attachments in chat messages'),
+    ('Chat.BroadcastRead', 'Chat', 'View broadcast channel conversations'),
+    ('Chat.BroadcastWrite', 'Chat', 'Send messages in broadcast channels')
 ) v(PermissionKey, Module, Description)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.SecPermission p WHERE p.PermissionKey = v.PermissionKey
