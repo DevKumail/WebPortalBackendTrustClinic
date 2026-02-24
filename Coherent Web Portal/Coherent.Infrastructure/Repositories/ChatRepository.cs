@@ -499,7 +499,7 @@ ORDER BY COALESCE(c.LastMessageAt, '1900-01-01') DESC, c.ConversationId DESC;";
         if (string.IsNullOrWhiteSpace(request.StaffType))
             throw new ArgumentException("staffType is required", nameof(request));
 
-        var validStaffTypes = new[] { "Nurse", "Receptionist", "IVFLab" };
+        var validStaffTypes = new[] { "Nurse", "Receptionist", "IVFLab" , "OTNurse" };
         if (!validStaffTypes.Contains(request.StaffType, StringComparer.OrdinalIgnoreCase))
             throw new ArgumentException($"staffType must be one of: {string.Join(", ", validStaffTypes)}", nameof(request));
 
