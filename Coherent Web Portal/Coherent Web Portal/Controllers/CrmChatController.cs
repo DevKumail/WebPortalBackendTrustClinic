@@ -6,7 +6,6 @@ using Coherent.Web.Portal.Hubs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
-using System.Text.Json;
 
 namespace Coherent.Web.Portal.Controllers;
 
@@ -17,19 +16,19 @@ namespace Coherent.Web.Portal.Controllers;
 public class CrmChatController : ControllerBase
 {
     private readonly IChatRepository _chatRepository;
-    private readonly IChatWebhookOutboxRepository _outbox;
     private readonly IHubContext<CrmChatHub> _hub;
+    private readonly IMobileChatNotifier _mobileChatNotifier;
     private readonly ILogger<CrmChatController> _logger;
 
     public CrmChatController(
         IChatRepository chatRepository,
-        IChatWebhookOutboxRepository outbox,
         IHubContext<CrmChatHub> hub,
+        IMobileChatNotifier mobileChatNotifier,
         ILogger<CrmChatController> logger)
     {
         _chatRepository = chatRepository;
-        _outbox = outbox;
         _hub = hub;
+        _mobileChatNotifier = mobileChatNotifier;
         _logger = logger;
     }
 
@@ -89,41 +88,23 @@ public class CrmChatController : ControllerBase
             _logger.LogError(ex, "Failed to broadcast chat message via SignalR");
         }
 
-        if (isDoctorToPatient)
+        // Notify Mobile Backend's ChatHub for real-time delivery to mobile clients
+        try
         {
-            try
+            var idStr = request.CrmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
+                ? request.CrmThreadId.Substring("CRM-TH-".Length) : request.CrmThreadId;
+            if (int.TryParse(idStr, out var convId))
             {
-                var conversationId = request.CrmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
-                    ? request.CrmThreadId.Substring("CRM-TH-".Length)
-                    : request.CrmThreadId;
-
-                var webhookPayload = new ChatDoctorMessageCreatedWebhook
-                {
-                    CrmThreadId = $"CRM-TH-{conversationId}",
-                    CrmMessageId = response.CrmMessageId,
-                    DoctorLicenseNo = request.SenderDoctorLicenseNo ?? string.Empty,
-                    PatientMrNo = request.ReceiverMrNo ?? string.Empty,
-                    MessageType = request.MessageType,
-                    Content = request.Content,
-                    FileUrl = request.FileUrl,
-                    FileName = request.FileName,
-                    FileSize = request.FileSize,
-                    SentAt = request.SentAt == default ? DateTime.UtcNow : request.SentAt
-                };
-
-                var payloadJson = JsonSerializer.Serialize(webhookPayload);
-
-                await _outbox.EnqueueIfNotExistsAsync(
-                    response.CrmMessageId,
-                    webhookPayload.CrmThreadId,
-                    webhookPayload.DoctorLicenseNo,
-                    webhookPayload.PatientMrNo,
-                    payloadJson);
+                await _mobileChatNotifier.NotifyMessageAsync(
+                    convId, 0, request.SenderType, null, request.MessageType,
+                    request.Content, request.FileUrl, request.FileName, request.FileSize,
+                    request.SentAt == default ? DateTime.UtcNow : request.SentAt,
+                    response.CrmMessageId, request.CrmThreadId);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to enqueue chat webhook outbox");
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to notify Mobile Backend ChatHub");
         }
 
         return Ok(response);
@@ -268,42 +249,23 @@ public class CrmChatController : ControllerBase
             _logger.LogError(ex, "Failed to broadcast staff chat message via SignalR");
         }
 
-        if (isStaffToPatient)
+        // Notify Mobile Backend's ChatHub for real-time delivery to mobile clients
+        try
         {
-            try
+            var idStr = crmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
+                ? crmThreadId.Substring("CRM-TH-".Length) : crmThreadId;
+            if (int.TryParse(idStr, out var convId))
             {
-                var conversationId = crmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
-                    ? crmThreadId.Substring("CRM-TH-".Length)
-                    : crmThreadId;
-
-                var webhookPayload = new ChatStaffMessageCreatedWebhook
-                {
-                    CrmThreadId = $"CRM-TH-{conversationId}",
-                    CrmMessageId = response.CrmMessageId,
-                    StaffType = request.ReceiverStaffType ?? "Staff",
-                    SenderEmpId = request.SenderEmpId,
-                    PatientMrNo = request.ReceiverMrNo ?? string.Empty,
-                    MessageType = request.MessageType,
-                    Content = request.Content,
-                    FileUrl = request.FileUrl,
-                    FileName = request.FileName,
-                    FileSize = request.FileSize,
-                    SentAt = request.SentAt == default ? DateTime.UtcNow : request.SentAt
-                };
-
-                var payloadJson = JsonSerializer.Serialize(webhookPayload);
-
-                await _outbox.EnqueueIfNotExistsAsync(
-                    response.CrmMessageId,
-                    webhookPayload.CrmThreadId,
-                    webhookPayload.SenderEmpId?.ToString() ?? string.Empty,
-                    webhookPayload.PatientMrNo,
-                    payloadJson);
+                await _mobileChatNotifier.NotifyMessageAsync(
+                    convId, 0, request.SenderType, null, request.MessageType,
+                    request.Content, request.FileUrl, request.FileName, request.FileSize,
+                    request.SentAt == default ? DateTime.UtcNow : request.SentAt,
+                    response.CrmMessageId, crmThreadId);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to enqueue staff chat webhook outbox");
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to notify Mobile Backend ChatHub for staff message");
         }
 
         return Ok(response);

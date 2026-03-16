@@ -45,7 +45,6 @@ builder.Services.AddApiVersioning(options =>
     options.SubstituteApiVersionInUrl = true;
 });
 
-builder.Services.AddHttpClient("MobileBackend");
 
 builder.Services.AddEndpointsApiExplorer();
 
@@ -279,6 +278,10 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IThirdPartyService, ThirdPartyService>();
 
+// Register Mobile Backend chat notifier (broadcasts messages via Mobile Backend's ChatHub)
+builder.Services.AddHttpClient("MobileBackend");
+builder.Services.AddScoped<IMobileChatNotifier, Coherent.Infrastructure.Services.MobileChatNotifier>();
+
 // Register Chat Repositories
 builder.Services.AddScoped<IChatRepository>(provider =>
 {
@@ -286,15 +289,6 @@ builder.Services.AddScoped<IChatRepository>(provider =>
     var connection = factory.CreateSecondaryConnection();
     return new Coherent.Infrastructure.Repositories.ChatRepository(connection);
 });
-
-builder.Services.AddScoped<IChatWebhookOutboxRepository>(provider =>
-{
-    var factory = provider.GetRequiredService<DatabaseConnectionFactory>();
-    var connection = factory.CreatePrimaryConnection();
-    return new Coherent.Infrastructure.Repositories.ChatWebhookOutboxRepository(connection);
-});
-
-builder.Services.AddHostedService<ChatWebhookBackgroundService>();
 
 // Register Security Repository (uses primary database - UEMedical_For_R&D)
 builder.Services.AddScoped<ISecurityRepository>(provider =>

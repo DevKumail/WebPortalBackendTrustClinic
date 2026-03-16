@@ -5,7 +5,6 @@ using Coherent.Infrastructure.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
-using System.Text.Json;
 using Coherent.Web.Portal.Hubs;
 
 namespace Coherent.Web.Portal.Controllers.V2;
@@ -17,15 +16,15 @@ namespace Coherent.Web.Portal.Controllers.V2;
 public class ChatController : ControllerBase
 {
     private readonly IChatRepository _chatRepository;
-    private readonly IChatWebhookOutboxRepository _outbox;
     private readonly IHubContext<CrmChatHub> _hub;
+    private readonly IMobileChatNotifier _mobileChatNotifier;
     private readonly ILogger<ChatController> _logger;
 
-    public ChatController(IChatRepository chatRepository, IChatWebhookOutboxRepository outbox, IHubContext<CrmChatHub> hub, ILogger<ChatController> logger)
+    public ChatController(IChatRepository chatRepository, IHubContext<CrmChatHub> hub, IMobileChatNotifier mobileChatNotifier, ILogger<ChatController> logger)
     {
         _chatRepository = chatRepository;
-        _outbox = outbox;
         _hub = hub;
+        _mobileChatNotifier = mobileChatNotifier;
         _logger = logger;
     }
 
@@ -77,79 +76,23 @@ public class ChatController : ControllerBase
             _logger.LogError(ex, "Failed to broadcast chat message via SignalR");
         }
 
-        if (isDoctorToPatient)
+        // Notify Mobile Backend's ChatHub for real-time delivery
+        try
         {
-            try
+            var idStr = request.CrmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
+                ? request.CrmThreadId.Substring("CRM-TH-".Length) : request.CrmThreadId;
+            if (int.TryParse(idStr, out var convId))
             {
-                var conversationId = request.CrmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
-                    ? request.CrmThreadId.Substring("CRM-TH-".Length)
-                    : request.CrmThreadId;
-
-                var webhookPayload = new ChatDoctorMessageCreatedWebhook
-                {
-                    CrmThreadId = $"CRM-TH-{conversationId}",
-                    CrmMessageId = response.CrmMessageId,
-                    DoctorLicenseNo = request.SenderDoctorLicenseNo ?? string.Empty,
-                    PatientMrNo = request.ReceiverMrNo ?? string.Empty,
-                    MessageType = request.MessageType,
-                    Content = request.Content,
-                    FileUrl = request.FileUrl,
-                    FileName = request.FileName,
-                    FileSize = request.FileSize,
-                    SentAt = request.SentAt == default ? DateTime.UtcNow : request.SentAt
-                };
-
-                var payloadJson = JsonSerializer.Serialize(webhookPayload);
-
-                await _outbox.EnqueueIfNotExistsAsync(
-                    response.CrmMessageId,
-                    webhookPayload.CrmThreadId,
-                    webhookPayload.DoctorLicenseNo,
-                    webhookPayload.PatientMrNo,
-                    payloadJson);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to enqueue chat webhook outbox");
+                await _mobileChatNotifier.NotifyMessageAsync(
+                    convId, 0, request.SenderType, null, request.MessageType,
+                    request.Content, request.FileUrl, request.FileName, request.FileSize,
+                    request.SentAt == default ? DateTime.UtcNow : request.SentAt,
+                    response.CrmMessageId, request.CrmThreadId);
             }
         }
-
-        if (isStaffToPatient)
+        catch (Exception ex)
         {
-            try
-            {
-                var conversationId = request.CrmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
-                    ? request.CrmThreadId.Substring("CRM-TH-".Length)
-                    : request.CrmThreadId;
-
-                var webhookPayload = new ChatStaffMessageCreatedWebhook
-                {
-                    CrmThreadId = $"CRM-TH-{conversationId}",
-                    CrmMessageId = response.CrmMessageId,
-                    StaffType = request.ReceiverStaffType ?? "Staff",
-                    SenderEmpId = request.SenderEmpId,
-                    PatientMrNo = request.ReceiverMrNo ?? string.Empty,
-                    MessageType = request.MessageType,
-                    Content = request.Content,
-                    FileUrl = request.FileUrl,
-                    FileName = request.FileName,
-                    FileSize = request.FileSize,
-                    SentAt = request.SentAt == default ? DateTime.UtcNow : request.SentAt
-                };
-
-                var payloadJson = JsonSerializer.Serialize(webhookPayload);
-
-                await _outbox.EnqueueIfNotExistsAsync(
-                    response.CrmMessageId,
-                    webhookPayload.CrmThreadId,
-                    webhookPayload.SenderEmpId?.ToString() ?? string.Empty,
-                    webhookPayload.PatientMrNo,
-                    payloadJson);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to enqueue staff chat webhook outbox");
-            }
+            _logger.LogError(ex, "Failed to notify Mobile Backend ChatHub");
         }
 
         return Ok(response);
