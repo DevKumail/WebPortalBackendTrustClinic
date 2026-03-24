@@ -93,10 +93,13 @@ public class CrmChatController : ControllerBase
         {
             var idStr = request.CrmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
                 ? request.CrmThreadId.Substring("CRM-TH-".Length) : request.CrmThreadId;
+            var msgIdStr = response.CrmMessageId?.StartsWith("CRM-MSG-", StringComparison.OrdinalIgnoreCase) == true
+                ? response.CrmMessageId.Substring("CRM-MSG-".Length) : response.CrmMessageId;
+            int.TryParse(msgIdStr, out var msgId);
             if (int.TryParse(idStr, out var convId))
             {
                 await _mobileChatNotifier.NotifyMessageAsync(
-                    convId, 0, request.SenderType, null, request.MessageType,
+                    convId, msgId, request.SenderType, null, request.MessageType,
                     request.Content, request.FileUrl, request.FileName, request.FileSize,
                     request.SentAt == default ? DateTime.UtcNow : request.SentAt,
                     response.CrmMessageId, request.CrmThreadId);
@@ -254,10 +257,13 @@ public class CrmChatController : ControllerBase
         {
             var idStr = crmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
                 ? crmThreadId.Substring("CRM-TH-".Length) : crmThreadId;
+            var msgIdStr = response.CrmMessageId?.StartsWith("CRM-MSG-", StringComparison.OrdinalIgnoreCase) == true
+                ? response.CrmMessageId.Substring("CRM-MSG-".Length) : response.CrmMessageId;
+            int.TryParse(msgIdStr, out var staffMsgId);
             if (int.TryParse(idStr, out var convId))
             {
                 await _mobileChatNotifier.NotifyMessageAsync(
-                    convId, 0, request.SenderType, null, request.MessageType,
+                    convId, staffMsgId, request.SenderType, null, request.MessageType,
                     request.Content, request.FileUrl, request.FileName, request.FileSize,
                     request.SentAt == default ? DateTime.UtcNow : request.SentAt,
                     response.CrmMessageId, crmThreadId);

@@ -28,7 +28,6 @@ public class ChatController : ControllerBase
         _logger = logger;
     }
 
-    [AllowAnonymous]
     [HttpPost("threads/get-or-create")]
     [ProducesResponseType(typeof(ChatThreadGetOrCreateResponse), 200)]
     public async Task<IActionResult> GetOrCreateThread([FromBody] ChatThreadGetOrCreateRequest request)
@@ -37,7 +36,6 @@ public class ChatController : ControllerBase
         return Ok(result);
     }
 
-    [AllowAnonymous]
     [HttpPost("messages")]
     [ProducesResponseType(typeof(ChatSendMessageResponse), 200)]
     public async Task<IActionResult> SendMessage([FromBody] ChatSendMessageRequest request)
@@ -81,10 +79,13 @@ public class ChatController : ControllerBase
         {
             var idStr = request.CrmThreadId.StartsWith("CRM-TH-", StringComparison.OrdinalIgnoreCase)
                 ? request.CrmThreadId.Substring("CRM-TH-".Length) : request.CrmThreadId;
+            var msgIdStr = response.CrmMessageId?.StartsWith("CRM-MSG-", StringComparison.OrdinalIgnoreCase) == true
+                ? response.CrmMessageId.Substring("CRM-MSG-".Length) : response.CrmMessageId;
+            int.TryParse(msgIdStr, out var msgId);
             if (int.TryParse(idStr, out var convId))
             {
                 await _mobileChatNotifier.NotifyMessageAsync(
-                    convId, 0, request.SenderType, null, request.MessageType,
+                    convId, msgId, request.SenderType, null, request.MessageType,
                     request.Content, request.FileUrl, request.FileName, request.FileSize,
                     request.SentAt == default ? DateTime.UtcNow : request.SentAt,
                     response.CrmMessageId, request.CrmThreadId);
@@ -104,7 +105,6 @@ public class ChatController : ControllerBase
         }
     }
 
-    [AllowAnonymous]
     [HttpGet("messages/updates")]
     [ProducesResponseType(typeof(List<ChatMessageUpdateResponse>), 200)]
     public async Task<IActionResult> GetUpdates([FromQuery] DateTime since, [FromQuery] int limit = 100)
@@ -113,7 +113,6 @@ public class ChatController : ControllerBase
         return Ok(updates);
     }
 
-    [AllowAnonymous]
     [HttpGet("conversations")]
     [ProducesResponseType(typeof(ChatConversationListResponse), 200)]
     public async Task<IActionResult> GetConversations([FromQuery] string? doctorLicenseNo, [FromQuery] string? patientMrNo, [FromQuery] int limit = 50)
@@ -135,7 +134,6 @@ public class ChatController : ControllerBase
 
     #region Broadcast Channel Endpoints (Staff: Nurse/Receptionist/IVFLab)
 
-    [AllowAnonymous]
     [HttpPost("broadcast-channels/get-or-create")]
     [ProducesResponseType(typeof(ChatBroadcastChannelGetOrCreateResponse), 200)]
     public async Task<IActionResult> GetOrCreateBroadcastChannel([FromBody] ChatBroadcastChannelGetOrCreateRequest request)
@@ -144,7 +142,6 @@ public class ChatController : ControllerBase
         return Ok(result);
     }
 
-    [AllowAnonymous]
     [HttpGet("broadcast-channels")]
     [ProducesResponseType(typeof(List<ChatBroadcastChannelListItemDto>), 200)]
     public async Task<IActionResult> GetBroadcastChannels([FromQuery] string staffType, [FromQuery] int limit = 50)
@@ -153,7 +150,6 @@ public class ChatController : ControllerBase
         return Ok(result);
     }
 
-    [AllowAnonymous]
     [HttpGet("broadcast-channels/unread-summary")]
     [ProducesResponseType(typeof(ChatStaffUnreadSummaryResponse), 200)]
     public async Task<IActionResult> GetStaffUnreadSummary([FromQuery] string staffType, [FromQuery] int limit = 50)
@@ -162,7 +158,6 @@ public class ChatController : ControllerBase
         return Ok(result);
     }
 
-    [AllowAnonymous]
     [HttpGet("threads/{crmThreadId}/messages")]
     [ProducesResponseType(typeof(List<ChatThreadMessageDto>), 200)]
     public async Task<IActionResult> GetThreadMessages([FromRoute] string crmThreadId, [FromQuery] int take = 50)
@@ -171,7 +166,6 @@ public class ChatController : ControllerBase
         return Ok(messages);
     }
 
-    [AllowAnonymous]
     [HttpPost("broadcast-channels/{crmThreadId}/mark-read")]
     [ProducesResponseType(typeof(ChatMarkReadResponse), 200)]
     public async Task<IActionResult> MarkBroadcastChannelRead(

@@ -15,7 +15,7 @@ namespace Coherent.Web.Portal.Controllers.V2;
 [ApiController]
 [Route("api/v{version:apiVersion}/[controller]")]
 [ApiVersion("2.0")]
-//[ThirdPartyAuth] // Requires Security Key authentication - TEMPORARILY DISABLED FOR TESTING
+[ThirdPartyAuth] // Requires Security Key authentication
 public class AppointmentsController : ControllerBase
 {
     private readonly IAppointmentRepository _appointmentRepository;
@@ -63,7 +63,6 @@ public class AppointmentsController : ControllerBase
     /// <summary>
     /// 4.1.2 Get Available Doctor Slots (V2 - Mobile App)
     /// </summary>
-    [AllowAnonymous]
     [HttpGet("GetAvailableSlotOfDoctor")]
     [ProducesResponseType(typeof(List<DoctorSlotsDto>), 200)]
     public async Task<IActionResult> GetAvailableSlotOfDoctor(

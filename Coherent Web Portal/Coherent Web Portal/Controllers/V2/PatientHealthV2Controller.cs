@@ -31,7 +31,6 @@ public class PatientHealthController : ControllerBase
     /// <summary>
     /// 4.3 Get Vital Signs by MRNO (V2 - Mobile App)
     /// </summary>
-    [AllowAnonymous]
     [HttpGet("GetVitalSignsByMRNO")]
     [ProducesResponseType(typeof(List<VitalSignsDto>), 200)]
     [ProducesResponseType(404)]
@@ -64,7 +63,6 @@ public class PatientHealthController : ControllerBase
     /// <summary>
     /// 4.4 Get Medications by MRNO (V2 - Mobile App)
     /// </summary>
-    [AllowAnonymous]
     [HttpGet("GetMedicationsByMRNO")]
     [ProducesResponseType(typeof(List<MedicationDto>), 200)]
     public async Task<IActionResult> GetMedicationsByMRNO([FromQuery] string MRNO)
@@ -86,7 +84,6 @@ public class PatientHealthController : ControllerBase
             return StatusCode(500, new { message = "An error occurred while retrieving medications" });
         }
     }
-    [AllowAnonymous]
     [HttpGet("GetMedicationsByMRNOV2")]
     [ProducesResponseType(typeof(List<MedicationV2Dto>), 200)]
     public async Task<IActionResult> GetMedicationsByMRNOV2([FromQuery] string MRNO)
@@ -114,7 +111,6 @@ public class PatientHealthController : ControllerBase
     /// </summary>
     /// 
 
-    [AllowAnonymous]
     [HttpGet("GetAllergyByMRNO")]
     [ProducesResponseType(typeof(List<AllergyDto>), 200)]
     public async Task<IActionResult> GetAllergyByMRNO([FromQuery] string MRNO)
@@ -137,7 +133,6 @@ public class PatientHealthController : ControllerBase
         }
     }
 
-    [AllowAnonymous]
     [HttpGet("GetDiagnosisByMRNO")]
     [ProducesResponseType(typeof(List<DiagnosisDto>), 200)]
     public async Task<IActionResult> GetDiagnosisByMRNO([FromQuery] string MRNO)
